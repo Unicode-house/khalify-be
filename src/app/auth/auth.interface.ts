@@ -1,0 +1,3 @@
+interface jwtPayload {
+  email: string;
+}

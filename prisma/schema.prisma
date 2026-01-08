@@ -1,0 +1,109 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// enum
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  EXPIRED
+  CANCELED
+  REFUND
+}
+
+enum PaymentProvider {
+  MIDTRANS
+}
+
+// model
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  create_at DateTime @default(now())
+  singedIn  DateTime @updatedAt
+
+  // relation
+  profile Profile?
+}
+
+model MagicLink {
+  id        String   @id @default(uuid())
+  email     String
+  token     String   @unique
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model highLight {
+  id        String   @id @default(uuid())
+  content   String
+  createdAt DateTime @default(now())
+
+  // relation
+  profileId String
+  profile   Profile @relation(fields: [profileId], references: [id])
+}
+
+model Profile {
+  id        String   @id @default(uuid())
+  name      String
+  username  String   @unique
+  avatarUrl String?
+  bio       String?
+  create_at DateTime @default(now())
+
+  // relation
+  userId     String      @unique
+  user       User        @relation(fields: [userId], references: [id])
+  highLights highLight[]
+  widgets    widget[]
+  orders     Order[]
+}
+
+model widget {
+  id         String   @id @default(uuid())
+  token      String
+  link       String?
+  name String?
+  dbID       String   @unique
+  create_at  DateTime @default(now())
+
+  // relation
+  profileId String
+  profile   Profile @relation(fields: [profileId], references: [id])
+}
+
+model Order {
+  id      String @id @default(uuid())
+  orderId String @unique @db.VarChar(50)
+  userId  String @db.Uuid
+
+  amount   Int // simpan dalam satuan terkecil (rupiah)
+  status   PaymentStatus   @default(PENDING)
+  provider PaymentProvider @default(MIDTRANS)
+
+  snapToken     String? @db.VarChar(255)
+  transactionId String? @db.VarChar(100)
+
+  rawNotification Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // relation
+  profileId String
+  profile   Profile @relation(fields: [profileId], references: [id])
+}
