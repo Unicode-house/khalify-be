@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   MethodNotAllowedException,
   NotFoundException,
@@ -14,6 +15,14 @@ import { HttpService } from '@nestjs/axios';
 import axios from 'axios';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
+
+interface QueryDbPinnedParams {
+  token: string;
+  databaseId: string;
+  pinned?: string; // "true" | "false" | undefined
+  pageSize: number;
+  startCursor?: string; // cursor untuk pagination (lihat catatan di bawah)
+}
 
 @Injectable()
 export class WidgetService extends ResponseHelper {
@@ -71,6 +80,130 @@ export class WidgetService extends ResponseHelper {
       'Notion Databases retrieved successfully',
     );
   }
+
+  async queryDbWithPinnedFilter(params: {
+    token: string;
+    databaseId: string;
+    pinned?: string; // "true" | "false" | undefined
+    pageSize: number;
+    startCursor?: string;
+  }) {
+    const { token, databaseId, pinned, pageSize, startCursor } = params;
+
+    if (!token) throw new BadRequestException('token is required');
+    if (!databaseId) throw new BadRequestException  ('databaseId is required');
+
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      'Notion-Version': '2022-06-28',
+      'Content-Type': 'application/json',
+    };
+
+    const sorts = [
+      { property: 'Publish Date', direction: 'descending' },
+      { timestamp: 'created_time', direction: 'descending' },
+    ];
+
+    // Hide != true (checkbox) => equals false
+    const hideFilter = { property: 'Hide', checkbox: { equals: false } };
+
+    // pinned=true => pinned only
+    if (pinned === 'true') {
+      const body = {
+        page_size: pageSize,
+        start_cursor: startCursor,
+        filter: {
+          and: [{ property: 'Pinned', checkbox: { equals: true } }, hideFilter],
+        },
+        sorts,
+      };
+
+      const { data } = await axios.post(
+        `https://api.notion.com/v1/databases/${databaseId}/query`,
+        body,
+        { headers },
+      );
+      return data;
+    }
+
+    // pinned=false => unpinned only
+    if (pinned === 'false') {
+      const body = {
+        page_size: pageSize,
+        start_cursor: startCursor,
+        filter: {
+          and: [
+            { property: 'Pinned', checkbox: { equals: false } },
+            hideFilter,
+          ],
+        },
+        sorts,
+      };
+
+      const { data } = await axios.post(
+        `https://api.notion.com/v1/databases/${databaseId}/query`,
+        body,
+        { headers },
+      );
+      return data;
+    }
+
+    // pinned param absent => default: pinned max 3 diprioritaskan, lalu unpinned sisanya
+    const pinnedLimit = Math.min(3, pageSize);
+    const unpinnedLimit = Math.max(0, pageSize - pinnedLimit);
+
+    // 1) get pinned max 3
+    const pinnedBody = {
+      page_size: pinnedLimit,
+      filter: {
+        and: [{ property: 'Pinned', checkbox: { equals: true } }, hideFilter],
+      },
+      sorts,
+    };
+
+    const pinnedResp = await axios.post(
+      `https://api.notion.com/v1/databases/${databaseId}/query`,
+      pinnedBody,
+      { headers },
+    );
+
+    const pinnedResults = pinnedResp.data?.results ?? [];
+
+    // 2) get unpinned fill remainder (paginate pakai startCursor)
+    let unpinnedData: any = { results: [], has_more: false, next_cursor: null };
+
+    if (unpinnedLimit > 0) {
+      const unpinnedBody = {
+        page_size: unpinnedLimit,
+        start_cursor: startCursor,
+        filter: {
+          and: [
+            { property: 'Pinned', checkbox: { equals: false } },
+            hideFilter,
+          ],
+        },
+        sorts,
+      };
+
+      const unpinnedResp = await axios.post(
+        `https://api.notion.com/v1/databases/${databaseId}/query`,
+        unpinnedBody,
+        { headers },
+      );
+
+      unpinnedData = unpinnedResp.data;
+    }
+
+    return {
+      object: 'list',
+      pinned_default: true,
+      pinned_limit: pinnedLimit,
+      results: [...pinnedResults, ...(unpinnedData?.results ?? [])],
+      next_cursor: unpinnedData?.next_cursor ?? null,
+      has_more: Boolean(unpinnedData?.has_more),
+    };
+  }
+
   // DETAIL
   async getDetail(id: string) {
     const data = await this.ps.client.widget.findMany({

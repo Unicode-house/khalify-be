@@ -8,6 +8,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
 } from '@nestjs/common';
 import { WidgetService } from './widget.service';
 import { CreateWidgetBulkDto, CreateWidgetDto, UpdateWidgetDto } from './widget.dto';
@@ -22,6 +23,27 @@ export class WidgetController {
   @Get()
   async getAll() {
     return this.widgetService.getAll();
+  }
+
+  @Get('/ntn/:token/db/:databaseId/pages')
+  async getNotionPages(
+    @Param('token') token: string,
+    @Param('databaseId') databaseId: string,
+    @Query('pinned') pinned?: string, // "true" | "false" | undefined
+    @Query('pageSize') pageSize?: string, // default 10
+    @Query('startCursor') startCursor?: string,
+  ) {
+    const size = Number.isFinite(Number(pageSize))
+      ? Math.max(1, Number(pageSize))
+      : 10;
+
+    return this.widgetService.queryDbWithPinnedFilter({
+      token,
+      databaseId,
+      pinned, // raw
+      pageSize: size,
+      startCursor,
+    });
   }
 
   @Post('/getNotionDatabases/:token')
