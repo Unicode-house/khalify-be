@@ -1,14 +1,21 @@
 {
-    "headers": [{
-        "source": "/(.*)",
-        "headers": [{
-                "key": "Access-Control-Allow-Origin",
-                "value": "https://khalify-notion-widgets.vercel.app"
-            },
-            {
-                "key": "Access-Control-Allow-Credentials",
-                "value": "true"
-            }
-        ]
-    }]
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": [
+            "https://khalify-notion-widgets.vercel.app",
+            "https://khlasify-notion-widget.vercel.app",
+            "widget.khlasify.com"
+          ]
+        },
+        {
+          "key": "Access-Control-Allow-Credentials",
+          "value": "true"
+        }
+      ]
+    }
+  ]
 }
