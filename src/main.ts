@@ -5,7 +5,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   const allowedOrigins = ['https://khalify-notion-widgets.vercel.app',
-    "https://khlasify-notion-widget.vercel.app"];
+    'https://khlasify-notion-widget.vercel.app','widget.khlasify.com'];
 
   app.enableCors({
     origin: (origin, callback) => {
