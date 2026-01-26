@@ -255,24 +255,37 @@ export class WidgetService extends ResponseHelper {
 
   // CREATE
   async create(dto: CreateWidgetDto) {
-    // const compare = await bcrypt.compare(
-    //   dto.secureCode,
-    //   '$2b$10$HHzcHq1whnolioELQVdLRuvn/EGFhpKZoZ26q5u2UbJ1smsHBy7p2',
-    // );
+    // 1. Decode token (dto.email sepertinya berisi token JWT)
+    let decode;
+    try {
+      decode = await this.js.decode(dto.email); 
+    } catch (e) {
+      throw new BadRequestException('Invalid Auth Token');
+    }
 
-    // if (compare === false) {
-    //   throw new MethodNotAllowedException('Invalid secure code');
-    // }
+    if (!decode || !decode.email) {
+       throw new BadRequestException('Invalid Token Payload');
+    }
 
-    const decode = await this.js.decode(dto.email);
-
+    // 2. Cari User & VALIDASI DULU sebelum akses property-nya
     const user = await this.ps.client.user.findFirst({
       where: { email: decode.email },
     });
 
+    if (!user) {
+      throw new NotFoundException('User not found'); // Cegah Error 500
+    }
+
+    // 3. Cari Profile & VALIDASI DULU
     const profile = await this.ps.client.profile.findFirst({
-      where: { userId: user.id },
+      where: { userId: user.id }, // Aman diakses karena user sudah dicek
     });
+
+    if (!profile) {
+      throw new NotFoundException('Profile not found'); // Cegah Error 500
+    }
+
+    // 4. Cek Duplikat Widget (Baru aman panggil profile.id)
     const widget = await this.ps.client.widget.findFirst({
       where: {
         dbID: dto.dbID,
@@ -280,15 +293,13 @@ export class WidgetService extends ResponseHelper {
       },
     });
 
+    // Ini penyebab Error 405 (Validasi Logic)
     if (widget) {
       throw new MethodNotAllowedException(
         'Widget for this database already exists',
       );
     }
 
-    if (!profile || !user) {
-      throw new NotFoundException('User or profile not found');
-    }
     const code = Math.floor(100000 + Math.random() * 900000).toString();
 
     const data = await this.ps.client.widget.create({
@@ -297,7 +308,7 @@ export class WidgetService extends ResponseHelper {
         dbID: dto.dbID,
         name: dto.name,
         profileId: profile.id,
-        link: `https://khalify-notion-widgets.vercel.app/embed/${code}?db=${dto.dbID}`,
+        link: `https://widget.khlasify.com/embed/${code}?db=${dto.dbID}`,
       },
     });
 
@@ -306,7 +317,7 @@ export class WidgetService extends ResponseHelper {
         user,
         profile,
         widget: data,
-        embedLink: `https://khalify-notion-widgets.vercel.app/embed/${code}?db=${dto.dbID}`,
+        embedLink: `https://widget.khlasify.com/embed/${code}?db=${dto.dbID}`,
       },
       'Widget created successfully',
       201,
@@ -380,7 +391,7 @@ export class WidgetService extends ResponseHelper {
         widgets,
         embedLinks: widgets.map((w) => {
           const code = Math.floor(100000 + Math.random() * 900000);
-          return `https://khalify-notion-widgets.vercel.app/embed/${code}?db=${w.dbID}`;
+          return `https://widget.khlasify.com/embed/${code}?db=${w.dbID}`;
         }),
       },
       'Widgets created successfully',
