@@ -47,6 +47,18 @@ export class ProfileService {
     });
   }
 
+  // Logika baru untuk mengupdate status isPro di database
+  async updateProStatus(id: string, status: boolean) {
+    await this.findOne(id); // Memastikan profil ditemukan sebelum update
+
+    return this.prisma.client.profile.update({
+      where: { id },
+      data: {
+        isPro: status,
+      },
+    });
+  }
+
   async remove(id: string) {
     await this.findOne(id);
 
