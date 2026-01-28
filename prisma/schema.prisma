@@ -64,6 +64,8 @@ model Profile {
   avatarUrl String?
   bio       String?
   create_at DateTime @default(now())
+  isPro Boolean @default(false)
+
 
   // relation
   userId     String      @unique

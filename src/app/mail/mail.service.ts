@@ -73,7 +73,7 @@ export class MailService extends ResponseHelper {
   <div style="max-width: 500px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); border: 1px solid #e5e7eb;">
     
     <div style="background-color: #ffffff; padding: 32px 40px; text-align: center; border-bottom: 1px solid #f3f4f6;">
-      <img src="https://res.cloudinary.com/dldcpjdoz/image/upload/v1769361846/khlasify_Primary_Logo-transparent_prq4xe.png" alt="Khlasify Logo" style="width: 150px; height: auto; display: block; margin: 0 auto;">
+      <img src="https://res.cloudinary.com/dldcpjdoz/image/upload/khlasify_Primary_Logo-transparent_prq4xe.png" alt="Khlasify Logo" style="width: 150px; height: auto; display: block; margin: 0 auto;">
     </div>
 
     <div style="padding: 40px 40px 32px 40px;">
