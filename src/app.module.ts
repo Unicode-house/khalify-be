@@ -13,6 +13,7 @@ import { ConfigModule } from '@nestjs/config';
 import { MailModule } from './app/mail/mail.module';
 import { mailConfig } from './config/mailer.config';
 import { HttpModule } from '@nestjs/axios';
+import { PaymentModule } from './payment/payment.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { HttpModule } from '@nestjs/axios';
     }),
     MailModule,
     HttpModule,
+    PaymentModule,
   ],
   controllers: [AppController],
   providers: [AppService],
