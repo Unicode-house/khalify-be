@@ -1,90 +1,128 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from 'src/app/prisma/prisma.service';
-import { ResponseHelper } from 'src/helper/base.response';
+import { PrismaService } from '../app/prisma/prisma.service'; 
 import axios from 'axios';
 
 @Injectable()
 export class PaymentService {
-  // Gunakan Logger bawaan NestJS agar log lebih rapi di terminal
   private readonly logger = new Logger(PaymentService.name);
-
-  // Ambil Config dari ENV (JANGAN HARDCODE DI SINI UNTUK PRODUCTION!)
-  // Pastikan .env Anda punya:
-  // NOTION_DB_ID=2fb1519e69f080b8a586f0f8cbab4653
-  // NOTION_SECRET=ntn_G56643036008mwChhk9IMXuw5kbkgNMZDyzXbXnnFElcKu
-  private readonly notionDbId = process.env.NOTION_DB_ID || "2fb1519e69f080b8a586f0f8cbab4653"; 
-  private readonly notionSecret = process.env.NOTION_SECRET || "ntn_G56643036008mwChhk9IMXuw5kbkgNMZDyzXbXnnFElcKu";
+  private readonly notionDbId = process.env.NOTION_DB_ID; 
+  private readonly notionSecret = process.env.NOTION_SECRET;
 
   constructor(private readonly prisma: PrismaService) {}
 
-  // 1. Generate Link Mayar (Pasif)
+  // 1. Generate Link Mayar
   async getUpgradeLink(userEmail: string, userName: string) {
+    this.logger.log(`[GetLink] Request upgrade link for: ${userEmail}`);
+
     const baseUrl = 'https://khlasify.myr.id/pl/content-pro/';
     const params = new URLSearchParams({
       email: userEmail,
-      name: userName,
-      // Opsional: Redirect balik ke dashboard setelah bayar
-      // redirect_url: 'https://dashboard.khlasify.com/payment-finish' 
+      name: userName || userEmail.split('@')[0], 
     });
 
-    return {
-      paymentLink: `${baseUrl}?${params.toString()}`
-    };
+    const finalLink = `${baseUrl}?${params.toString()}`;
+    return { paymentLink: finalLink };
   }
 
-  // 2. Logic Utama: Cek Notion -> Sync ke DB Lokal
- async checkAndSyncStatus(userId: string, userEmail: string) {
-    // 1. Cek Cache Lokal di tabel PROFILE (Bukan User)
-    const profile = await this.prisma.client.profile.findUnique({
-      where: { userId: userId }, // Cari profile berdasarkan userId
-      select: { isPro: true, id: true } 
-    });
+  // 2. Logic Utama
+  async checkAndSyncStatus(userId: string | undefined, userEmail: string) {
+    this.logger.log(`[SyncStatus] Check request for Email: ${userEmail} (UserID input: ${userId})`);
 
-    // Jika profile tidak ditemukan (kasus langka), return error/false
-    if (!profile) return { isPro: false, status: 'profile_not_found' };
+    let targetUserId = userId;
 
-    // Jika sudah PRO, langsung return
-    if (profile.isPro) {
-      return { isPro: true, status: 'already_pro' };
+    // [FIX 1] Gunakan .client saat akses DB
+    // Jika userId kosong (Magic Link), cari User ID berdasarkan Email
+    if (!targetUserId) {
+      this.logger.log(`[SyncStatus] UserID missing. Finding user by email...`);
+      try {
+        // PERBAIKAN: this.prisma.client.user
+        const user = await this.prisma.client.user.findUnique({
+          where: { email: userEmail },
+        });
+
+        if (!user) {
+          this.logger.error(`[SyncStatus] Critical: User with email ${userEmail} not found in DB.`);
+          return { isPro: false, status: 'user_not_found_in_db' };
+        }
+        targetUserId = user.id;
+        this.logger.log(`[SyncStatus] User found via email. ID: ${targetUserId}`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.error(`[SyncStatus] DB Error finding user: ${msg}`);
+        return { isPro: false, status: 'db_error' };
+      }
     }
 
-    // 2. Hit API Notion
+    // A. Cek Cache Lokal di tabel PROFILE
+    try {
+      // PERBAIKAN: this.prisma.client.profile
+      const profile = await this.prisma.client.profile.findUnique({
+        where: { userId: targetUserId },
+        select: { isPro: true, id: true } 
+      });
+
+      if (profile?.isPro) {
+        this.logger.log(`[SyncStatus] User is already PRO (Local Cache).`);
+        return { isPro: true, status: 'already_pro' };
+      }
+      
+      this.logger.log(`[SyncStatus] User is FREE locally. Checking Notion...`);
+
+    } catch (error) {
+       const msg = error instanceof Error ? error.message : String(error);
+       this.logger.warn(`[SyncStatus] Local DB Check Warning: ${msg}`);
+    }
+
+    // B. Hit API Notion
     const isPaidInNotion = await this.checkNotionTransaction(userEmail);
 
     if (isPaidInNotion) {
-      // 3. Sinkronisasi: Update tabel PROFILE
-      await this.prisma.client.profile.update({
-        where: { userId: userId }, // Kita update berdasarkan userId (karena @unique)
-        data: { isPro: true }
-      });
-      
-      this.logger.log(`User ${userEmail} synced to PRO based on Notion data.`);
-      return { isPro: true, status: 'synced_now' };
+      this.logger.log(`[SyncStatus] PAID found in Notion! Syncing to local DB...`);
+
+      // C. Sinkronisasi (UPSERT)
+      try {
+        // PERBAIKAN: this.prisma.client.profile
+        await this.prisma.client.profile.upsert({
+          where: { userId: targetUserId },
+          update: { isPro: true },
+          create: {
+            userId: targetUserId!,
+            name: userEmail.split('@')[0],
+            username: userEmail.split('@')[0] + Math.floor(Math.random() * 9999),
+            isPro: true
+          }
+        });
+        
+        this.logger.log(`[SyncStatus] SUCCESS! User ${userEmail} synced to PRO.`);
+        return { isPro: true, status: 'synced_now' };
+
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        this.logger.error(`[SyncStatus] Failed to update Local DB: ${msg}`);
+        return { isPro: true, status: 'synced_but_update_failed' }; 
+      }
     }
 
-    // 4. Belum bayar
+    this.logger.log(`[SyncStatus] No PAID transaction found in Notion for ${userEmail}.`);
     return { isPro: false, status: 'waiting_payment' };
   }
-  // --- PRIVATE HELPER (Logic Notion) ---
+
+  // --- PRIVATE HELPER ---
   private async checkNotionTransaction(email: string): Promise<boolean> {
+    if (!this.notionDbId || !this.notionSecret) {
+      this.logger.error(`[NotionAPI] Missing Env Config!`);
+      return false;
+    }
+
     try {
       const response = await axios.post(
         `https://api.notion.com/v1/databases/${this.notionDbId}/query`,
         {
           filter: {
             and: [
-              {
-                property: 'email', // Sesuaikan nama property di Notion (huruf kecil/besar sensitif!)
-                email: { equals: email }, // Asumsi tipe property Notion adalah 'Email'
-              },
-              {
-                property: 'status', 
-                rich_text: { equals: 'PAID' }, // Pastikan value-nya 'PAID' atau 'Success' sesuai Make.com
-              },
-              {
-                property: 'variant',
-                rich_text: { contains: 'pro' } // Filter tambahan (opsional)
-              }
+              { property: 'email', email: { equals: email } }, // Sesuaikan huruf besar/kecil key ini dengan DB Notion
+              { property: 'status', rich_text: { equals: 'PAID' } },
+              { property: 'variant', rich_text: { contains: 'pro' } }
             ],
           },
         },
@@ -97,16 +135,16 @@ export class PaymentService {
         }
       );
 
-      // Jika ada minimal 1 row data, berarti valid
       return response.data.results.length > 0;
 
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        this.logger.error(`Notion API Error: ${JSON.stringify(error.response?.data)}`);
+        this.logger.error(`[NotionAPI] Axios Error: ${error.response?.status} - ${JSON.stringify(error.response?.data)}`);
       } else {
-        this.logger.error(`Unknown Error checking Notion: ${error}`);
+        const msg = error instanceof Error ? error.message : String(error);
+        this.logger.error(`[NotionAPI] Unknown Error: ${msg}`);
       }
-      return false; // Default: anggap belum bayar kalau error
+      return false; 
     }
   }
 }
