@@ -1,13 +1,18 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, Req, Get } from '@nestjs/common';
 import { PaymentService } from './payment.service';
 import { ResponseHelper } from 'src/helper/base.response';
 
 @Controller('payment')
 export class PaymentController {
   constructor(private readonly paymentService: PaymentService) {}
- @Post('sync-status')
-  async syncStatus(@Body() body: { email: string }) {
-    const result = await this.paymentService.syncProStatus(body.email);
-    return ResponseHelper.success(result, 'Sync completed');
+@Post('link')
+  async getLink(@Req() req: any) {
+    return this.paymentService.getUpgradeLink(req.user.email, req.user.name);
+  }
+
+  @Get('check-status')
+  async checkStatus(@Req() req: any) {
+    // req.user biasanya berisi payload JWT (id, email, dll)
+    return this.paymentService.checkAndSyncStatus(req.user.id, req.user.email);
   }
 }

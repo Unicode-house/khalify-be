@@ -91,7 +91,7 @@ export class WidgetService extends ResponseHelper {
     const { token, databaseId, pinned, pageSize, startCursor } = params;
 
     if (!token) throw new BadRequestException('token is required');
-    if (!databaseId) throw new BadRequestException  ('databaseId is required');
+    if (!databaseId) throw new BadRequestException('databaseId is required');
 
     const headers = {
       Authorization: `Bearer ${token}`,
@@ -258,13 +258,13 @@ export class WidgetService extends ResponseHelper {
     // 1. Decode token (dto.email sepertinya berisi token JWT)
     let decode;
     try {
-      decode = await this.js.decode(dto.email); 
+      decode = await this.js.decode(dto.email);
     } catch (e) {
       throw new BadRequestException('Invalid Auth Token');
     }
 
     if (!decode || !decode.email) {
-       throw new BadRequestException('Invalid Token Payload');
+      throw new BadRequestException('Invalid Token Payload');
     }
 
     // 2. Cari User & VALIDASI DULU sebelum akses property-nya
@@ -286,19 +286,22 @@ export class WidgetService extends ResponseHelper {
     }
 
     // 4. Cek Duplikat Widget (Baru aman panggil profile.id)
-    const widget = await this.ps.client.widget.findFirst({
-      where: {
-        dbID: dto.dbID,
-        profileId: profile.id,
-      },
+    const existingWidget = await this.ps.client.widget.findFirst({
+      where: { dbID: dto.dbID },
     });
 
-    // Ini penyebab Error 405 (Validasi Logic)
-    if (widget) {
+    if (existingWidget) {
       throw new MethodNotAllowedException(
-        'Widget for this database already exists',
+        `Widget dengan Database ID ${dto.dbID} sudah terdaftar di sistem.`,
       );
     }
+
+    // Ini penyebab Error 405 (Validasi Logic)
+    // if (widget) {
+    //   throw new MethodNotAllowedException(
+    //     'Widget for this database already exists',
+    //   );
+    // }
 
     const code = Math.floor(100000 + Math.random() * 900000).toString();
 
@@ -311,6 +314,21 @@ export class WidgetService extends ResponseHelper {
         link: `https://widget.khlasify.com/embed/${code}?db=${dto.dbID}`,
       },
     });
+    try {
+      const response = await axios.post(
+        'https://khlasify-widget-be.vercel.app/widgets/create',
+        data,
+      );
+      // success logic
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 405) {
+        console.error(
+          'Database ini sudah terdaftar sebagai widget. Silakan pilih database lain.',
+        );
+      } else {
+        console.error('Terjadi kesalahan pada server.');
+      }
+    }
 
     return ResponseHelper.success(
       {

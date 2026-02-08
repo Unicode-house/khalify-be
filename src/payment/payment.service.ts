@@ -1,94 +1,112 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from 'src/app/prisma/prisma.service';
 import { ResponseHelper } from 'src/helper/base.response';
 import axios from 'axios';
 
 @Injectable()
-export class PaymentService extends ResponseHelper {
-  constructor(private readonly prisma: PrismaService) {
-    super();
+export class PaymentService {
+  // Gunakan Logger bawaan NestJS agar log lebih rapi di terminal
+  private readonly logger = new Logger(PaymentService.name);
+
+  // Ambil Config dari ENV (JANGAN HARDCODE DI SINI UNTUK PRODUCTION!)
+  // Pastikan .env Anda punya:
+  // NOTION_DB_ID=2fb1519e69f080b8a586f0f8cbab4653
+  // NOTION_SECRET=ntn_G56643036008mwChhk9IMXuw5kbkgNMZDyzXbXnnFElcKu
+  private readonly notionDbId = process.env.NOTION_DB_ID || "2fb1519e69f080b8a586f0f8cbab4653"; 
+  private readonly notionSecret = process.env.NOTION_SECRET || "ntn_G56643036008mwChhk9IMXuw5kbkgNMZDyzXbXnnFElcKu";
+
+  constructor(private readonly prisma: PrismaService) {}
+
+  // 1. Generate Link Mayar (Pasif)
+  async getUpgradeLink(userEmail: string, userName: string) {
+    const baseUrl = 'https://khlasify.myr.id/pl/content-pro/';
+    const params = new URLSearchParams({
+      email: userEmail,
+      name: userName,
+      // Opsional: Redirect balik ke dashboard setelah bayar
+      // redirect_url: 'https://dashboard.khlasify.com/payment-finish' 
+    });
+
+    return {
+      paymentLink: `${baseUrl}?${params.toString()}`
+    };
   }
 
-  async syncProStatus(userEmail: string) {
-    // Pastikan ID dan Token benar
-    const NOTION_TRANS_DB_ID = "2fb1519e69f080b8a586f0f8cbab4653";
-    const NOTION_TOKEN = "ntn_G56643036008mwChhk9IMXuw5kbkgNMZDyzXbXnnFElcKu"; 
+  // 2. Logic Utama: Cek Notion -> Sync ke DB Lokal
+ async checkAndSyncStatus(userId: string, userEmail: string) {
+    // 1. Cek Cache Lokal di tabel PROFILE (Bukan User)
+    const profile = await this.prisma.client.profile.findUnique({
+      where: { userId: userId }, // Cari profile berdasarkan userId
+      select: { isPro: true, id: true } 
+    });
 
+    // Jika profile tidak ditemukan (kasus langka), return error/false
+    if (!profile) return { isPro: false, status: 'profile_not_found' };
+
+    // Jika sudah PRO, langsung return
+    if (profile.isPro) {
+      return { isPro: true, status: 'already_pro' };
+    }
+
+    // 2. Hit API Notion
+    const isPaidInNotion = await this.checkNotionTransaction(userEmail);
+
+    if (isPaidInNotion) {
+      // 3. Sinkronisasi: Update tabel PROFILE
+      await this.prisma.client.profile.update({
+        where: { userId: userId }, // Kita update berdasarkan userId (karena @unique)
+        data: { isPro: true }
+      });
+      
+      this.logger.log(`User ${userEmail} synced to PRO based on Notion data.`);
+      return { isPro: true, status: 'synced_now' };
+    }
+
+    // 4. Belum bayar
+    return { isPro: false, status: 'waiting_payment' };
+  }
+  // --- PRIVATE HELPER (Logic Notion) ---
+  private async checkNotionTransaction(email: string): Promise<boolean> {
     try {
       const response = await axios.post(
-        `https://api.notion.com/v1/databases/${NOTION_TRANS_DB_ID}/query`,
+        `https://api.notion.com/v1/databases/${this.notionDbId}/query`,
         {
           filter: {
             and: [
               {
-                // 1. Cek Nama Property: Biasanya 'Email' (Huruf Besar Awal)
-                property: 'Email', 
-                
-                // 2. Cek Tipe Property:
-                // Jika Icon Amplop ✉️ -> Pakai 'email'
-                // Jika Icon Huruf 'A' -> Pakai 'rich_text'
-                // Default Make.com biasanya 'email' atau 'rich_text'. 
-                // Kita coba 'email' dulu sesuai icon standar.
-                email: { 
-                  equals: userEmail,
-                },
+                property: 'email', // Sesuaikan nama property di Notion (huruf kecil/besar sensitif!)
+                email: { equals: email }, // Asumsi tipe property Notion adalah 'Email'
               },
               {
-                // 3. Cek Nama Property: Biasanya 'Status' (Huruf Besar Awal)
-                property: 'Status', 
-                
-                // 4. PERBAIKAN UTAMA DISINI (Berdasarkan Error Log 400)
-                // Error bilang DB-nya Text, tapi Anda filter pakai Select.
-                // Jadi kita ganti ke 'rich_text'.
-                rich_text: { 
-                  equals: 'Success', 
-                },
+                property: 'status', 
+                rich_text: { equals: 'PAID' }, // Pastikan value-nya 'PAID' atau 'Success' sesuai Make.com
               },
+              {
+                property: 'variant',
+                rich_text: { contains: 'pro' } // Filter tambahan (opsional)
+              }
             ],
           },
         },
         {
           headers: {
-            Authorization: `Bearer ${NOTION_TOKEN}`,
+            Authorization: `Bearer ${this.notionSecret}`,
             'Notion-Version': '2022-06-28',
             'Content-Type': 'application/json',
           },
         }
       );
 
-      const transactions = response.data.results;
-
-      // Logika Penentuan
-      if (transactions.length > 0) {
-        // Cari User ID lokal
-        const user = await this.prisma.client.user.findFirst({
-          where: { email: userEmail },
-        });
-
-        if (user) {
-          // Update DB Lokal jadi PRO
-          await this.prisma.client.profile.update({
-            where: { userId: user.id },
-            data: { isPro: true },
-          });
-          
-          return { isPro: true, message: 'Status synced: PRO Active' };
-        } else {
-             // User belum terdaftar di aplikasi tapi sudah bayar
-             return { isPro: false, message: 'User not found in App' };
-        }
-      }
-
-      return { isPro: false, message: 'No successful transaction found' };
+      // Jika ada minimal 1 row data, berarti valid
+      return response.data.results.length > 0;
 
     } catch (error) {
-      // Logging Error
       if (axios.isAxiosError(error)) {
-        console.error('🔴 NOTION ERROR BODY:', JSON.stringify(error.response?.data, null, 2));
+        this.logger.error(`Notion API Error: ${JSON.stringify(error.response?.data)}`);
       } else {
-        console.error('🔴 UNKNOWN ERROR:', error);
+        this.logger.error(`Unknown Error checking Notion: ${error}`);
       }
-      throw new Error(`Failed to sync: ${error.message}`);
+      return false; // Default: anggap belum bayar kalau error
     }
   }
 }
