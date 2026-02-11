@@ -98,7 +98,7 @@ model widget {
   name String?
   dbID       String   @unique
   create_at  DateTime @default(now())
-
+  
   // relation
   profileId String
   profile   Profile @relation(fields: [profileId], references: [id])
