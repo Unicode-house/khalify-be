@@ -205,38 +205,38 @@ export class WidgetService extends ResponseHelper {
   }
 
  async getDetail(id: string) {
-    // UBAH: Gunakan findFirst agar return object tunggal (lebih bersih), atau tetap findMany tapi pastikan include jalan.
-    // Saya sarankan tetap findMany jika struktur FE kamu mengharapkan array, tapi pastikan include-nya.
-    
-    const data = await this.ps.client.widget.findMany({
-      where: {
-        dbID: id,
-      },
-      // 🔥 PASTIKAN BAGIAN INI ADA DAN TIDAK DI-COMMENT
-      include: {
-        profile: {
-          select: {
-            id: true,
-            name: true,
-            username: true,
-            isPro: true, // Ambil field isPro
-            bio: true,
-            avatarUrl: true
-          }
-        } 
-      },
-    });
+  // Gunakan findFirst untuk mendapatkan 1 objek widget
+  const widget = await this.ps.client.widget.findFirst({
+    where: {
+      dbID: id,
+    },
+    include: {
+      profile: {
+        select: {
+          isPro: true,
+          // tambahkan field lain jika butuh
+        }
+      } 
+    },
+  });
 
-    if (!data || data.length === 0) {
-      return ResponseHelper.error(
-        'Widget not found',
-        404,
-        'RESOURCE_NOT_FOUND',
-      );
-    }
+  if (!widget) {
+    return ResponseHelper.error(
+      'Widget not found',
+      404,
+      'RESOURCE_NOT_FOUND',
+    );
+  }
 
-    return ResponseHelper.success(data, 'Widget retrieved successfully');
-  }
+  // Sekarang data.profile aman diakses karena 'widget' adalah objek, bukan array
+  const responseData = {
+    ...widget,
+    isPro: widget.profile?.isPro ?? false,
+  };
+
+  // Jika FE kamu wajib menerima Array, bungkus di dalam [ ]
+  return ResponseHelper.success([responseData], 'Widget retrieved successfully');
+}
 
   async getWidgetByEmail(token: string) {
     const payload = this.js.decode(token);
@@ -326,7 +326,6 @@ export class WidgetService extends ResponseHelper {
         dbID: dto.dbID,
         name: dto.name,
         profileId: profile.id,
-       
         link: `https://widget.khlasify.com/embed/${code}?db=${dto.dbID}`,
       },
     });
