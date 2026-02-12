@@ -322,6 +322,7 @@ export class WidgetService extends ResponseHelper {
         dbID: dto.dbID,
         name: dto.name,
         profileId: profile.id,
+       
         link: `https://widget.khlasify.com/embed/${code}?db=${dto.dbID}`,
       },
     });
