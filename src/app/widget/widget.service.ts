@@ -210,7 +210,18 @@ export class WidgetService extends ResponseHelper {
       where: {
         dbID: id,
       },
+      include: {
+        profile: true, // <--- INI KUNCINYA. Ambil data profile (termasuk isPro)
+      },
     });
+
+    if (!data || data.length === 0) {
+      return ResponseHelper.error(
+        'Widget not found',
+        404,
+        'RESOURCE_NOT_FOUND',
+      );
+    }
 
     if (!data) {
       return ResponseHelper.error(
