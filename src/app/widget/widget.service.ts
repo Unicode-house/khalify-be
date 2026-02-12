@@ -204,35 +204,39 @@ export class WidgetService extends ResponseHelper {
     };
   }
 
-  // DETAIL
-  async getDetail(id: string) {
-    const data = await this.ps.client.widget.findMany({
-      where: {
-        dbID: id,
-      },
-      include: {
-        profile: true, // <--- INI KUNCINYA. Ambil data profile (termasuk isPro)
-      },
-    });
+ async getDetail(id: string) {
+    // UBAH: Gunakan findFirst agar return object tunggal (lebih bersih), atau tetap findMany tapi pastikan include jalan.
+    // Saya sarankan tetap findMany jika struktur FE kamu mengharapkan array, tapi pastikan include-nya.
+    
+    const data = await this.ps.client.widget.findMany({
+      where: {
+        dbID: id,
+      },
+      // 🔥 PASTIKAN BAGIAN INI ADA DAN TIDAK DI-COMMENT
+      include: {
+        profile: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            isPro: true, // Ambil field isPro
+            bio: true,
+            avatarUrl: true
+          }
+        } 
+      },
+    });
 
-    if (!data || data.length === 0) {
-      return ResponseHelper.error(
-        'Widget not found',
-        404,
-        'RESOURCE_NOT_FOUND',
-      );
-    }
+    if (!data || data.length === 0) {
+      return ResponseHelper.error(
+        'Widget not found',
+        404,
+        'RESOURCE_NOT_FOUND',
+      );
+    }
 
-    if (!data) {
-      return ResponseHelper.error(
-        'Widget not found',
-        404,
-        'RESOURCE_NOT_FOUND',
-      );
-    }
-
-    return ResponseHelper.success(data, 'Widget retrieved successfully');
-  }
+    return ResponseHelper.success(data, 'Widget retrieved successfully');
+  }
 
   async getWidgetByEmail(token: string) {
     const payload = this.js.decode(token);
