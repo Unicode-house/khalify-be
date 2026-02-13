@@ -209,15 +209,15 @@ export class WidgetService extends ResponseHelper {
     const widget = await this.ps.client.widget.findUnique({
       where: { dbID: id },
       include: {
-        profile: true, // Pastikan relasi ini ditarik
+        profile: true,
       },
     });
 
     if (!widget) {
-      return ResponseHelper.error('Widget not found', 404, 'RESOURCE_NOT_FOUND');
+      return ResponseHelper.error('Widget tidak ditemukan', 404, 'NOT_FOUND');
     }
 
-    // Gunakan optional chaining (?.) untuk mencegah crash 500
+    // Gunakan ?. untuk mencegah crash jika profile null
     const responseData = {
       id: widget.id,
       token: widget.token,
@@ -226,14 +226,15 @@ export class WidgetService extends ResponseHelper {
       dbID: widget.dbID,
       create_at: widget.create_at,
       profileId: widget.profileId,
-      // Jika profile null, isPro akan otomatis false tanpa membuat server crash
+      // Jika profile tidak ada, isPro jadi false, bukan crash 500
       isPro: widget.profile?.isPro ?? false, 
     };
 
     return ResponseHelper.success([responseData], 'Widget retrieved successfully');
   } catch (error) {
-    console.error('ERROR GET DETAIL:', error);
-    return ResponseHelper.error('Internal Server Error', 500,``);
+    // Ini akan muncul di Dashboard Vercel > Logs
+    console.error('CRASH LOG:', error); 
+    return ResponseHelper.error('Terjadi kesalahan internal server', 500,`Vercel jancuk`);
   }
 }
 
