@@ -227,10 +227,10 @@ export class WidgetService extends ResponseHelper {
     create_at: widget.create_at,
     profileId: widget.profileId,
     // Ambil langsung dari relasi profile yang di-include
-    isPro: widget.profile?.isPro ?? false, 
+    isPro: widget.profile.isPro ?? false, 
   };
 
-  
+
   return ResponseHelper.success([responseData], 'Widget retrieved successfully');
 }
 
