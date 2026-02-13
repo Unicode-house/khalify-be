@@ -206,6 +206,11 @@ export class WidgetService extends ResponseHelper {
 
   async getDetail(id: string) {
   try {
+    // 1. Validasi Input (Basic Null Safety)
+    if (!id) {
+      return ResponseHelper.error('ID tidak boleh kosong', 400, 'BAD_REQUEST');
+    }
+
     const widget = await this.ps.client.widget.findUnique({
       where: { dbID: id },
       include: {
@@ -213,28 +218,41 @@ export class WidgetService extends ResponseHelper {
       },
     });
 
+    // 2. Jika data tidak ada di database
     if (!widget) {
       return ResponseHelper.error('Widget tidak ditemukan', 404, 'NOT_FOUND');
     }
 
-    // Gunakan ?. untuk mencegah crash jika profile null
+    // 3. Mapping dengan Null Safety (Optional Chaining & Nullish Coalescing)
     const responseData = {
       id: widget.id,
-      token: widget.token,
-      link: widget.link,
-      name: widget.name,
+      token: widget.token ?? '',
+      link: widget.link ?? '',
+      name: widget.name ?? 'Unnamed Widget',
       dbID: widget.dbID,
       create_at: widget.create_at,
       profileId: widget.profileId,
-      // Jika profile tidak ada, isPro jadi false, bukan crash 500
+      // Jika profile null, isPro otomatis false tanpa crash
       isPro: widget.profile?.isPro ?? false, 
     };
 
     return ResponseHelper.success([responseData], 'Widget retrieved successfully');
-  } catch (error) {
-    // Ini akan muncul di Dashboard Vercel > Logs
-    console.error('CRASH LOG:', error); 
-    return ResponseHelper.error('Terjadi kesalahan internal server', 500,`Vercel jancuk`);
+
+  } catch (error: any) {
+    // 4. Logging yang lebih spesifik untuk debugging di Vercel Logs
+    console.error('SERVER_CRASH_DETAIL:', {
+      message: error.message,
+      stack: error.stack,
+      id_requested: id
+    });
+
+    // Jangan tampilkan pesan "kasar" ke user/client di production, 
+    // cukup simpan di console log saja.
+    return ResponseHelper.error(
+      'Terjadi kesalahan internal pada server', 
+      500, 
+      error.code ?? 'INTERNAL_SERVER_ERROR'
+    );
   }
 }
 
