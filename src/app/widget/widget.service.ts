@@ -205,38 +205,32 @@ export class WidgetService extends ResponseHelper {
   }
 
  async getDetail(id: string) {
-  // Gunakan findFirst untuk mendapatkan 1 objek widget
-  const widget = await this.ps.client.widget.findFirst({
-    where: {
-      dbID: id,
-    },
+  const widget = await this.ps.client.widget.findUnique({
+    where: { dbID: id },
     include: {
-      profile: {
-        select: {
-          isPro: true,
-          // tambahkan field lain jika butuh
-          
-        }
-      } 
+      profile: true,
     },
   });
-  console.log('DEBUG_PROFILE:', widget.profile);
+
 
   if (!widget) {
-    return ResponseHelper.error(
-      'Widget not found',
-      404,
-      'RESOURCE_NOT_FOUND',
-    );
+    return ResponseHelper.error('Widget not found', 404, 'RESOURCE_NOT_FOUND');
   }
 
-  // Sekarang data.profile aman diakses karena 'widget' adalah objek, bukan array
+  // Lakukan mapping secara manual dan eksplisit
   const responseData = {
-    ...widget,
-    isPro: widget.profile?.isPro ?? false,
+    id: widget.id,
+    token: widget.token,
+    link: widget.link,
+    name: widget.name,
+    dbID: widget.dbID,
+    create_at: widget.create_at,
+    profileId: widget.profileId,
+    // Ambil langsung dari relasi profile yang di-include
+    isPro: widget.profile?.isPro ?? false, 
   };
 
-  // Jika FE kamu wajib menerima Array, bungkus di dalam [ ]
+  
   return ResponseHelper.success([responseData], 'Widget retrieved successfully');
 }
 
