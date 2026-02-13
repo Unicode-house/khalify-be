@@ -204,34 +204,37 @@ export class WidgetService extends ResponseHelper {
     };
   }
 
- async getDetail(id: string) {
-  const widget = await this.ps.client.widget.findUnique({
-    where: { dbID: id },
-    include: {
-      profile: true,
-    },
-  });
+  async getDetail(id: string) {
+  try {
+    const widget = await this.ps.client.widget.findUnique({
+      where: { dbID: id },
+      include: {
+        profile: true, // Pastikan relasi ini ditarik
+      },
+    });
 
+    if (!widget) {
+      return ResponseHelper.error('Widget not found', 404, 'RESOURCE_NOT_FOUND');
+    }
 
-  if (!widget) {
-    return ResponseHelper.error('Widget not found', 404, 'RESOURCE_NOT_FOUND');
+    // Gunakan optional chaining (?.) untuk mencegah crash 500
+    const responseData = {
+      id: widget.id,
+      token: widget.token,
+      link: widget.link,
+      name: widget.name,
+      dbID: widget.dbID,
+      create_at: widget.create_at,
+      profileId: widget.profileId,
+      // Jika profile null, isPro akan otomatis false tanpa membuat server crash
+      isPro: widget.profile?.isPro ?? false, 
+    };
+
+    return ResponseHelper.success([responseData], 'Widget retrieved successfully');
+  } catch (error) {
+    console.error('ERROR GET DETAIL:', error);
+    return ResponseHelper.error('Internal Server Error', 500,``);
   }
-
-  // Lakukan mapping secara manual dan eksplisit
-  const responseData = {
-    id: widget.id,
-    token: widget.token,
-    link: widget.link,
-    name: widget.name,
-    dbID: widget.dbID,
-    create_at: widget.create_at,
-    profileId: widget.profileId,
-    // Ambil langsung dari relasi profile yang di-include
-    isPro: widget.profile.isPro ?? false, 
-  };
-
-
-  return ResponseHelper.success([responseData], 'Widget retrieved successfully');
 }
 
   async getWidgetByEmail(token: string) {
