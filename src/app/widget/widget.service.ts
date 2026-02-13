@@ -215,10 +215,12 @@ export class WidgetService extends ResponseHelper {
         select: {
           isPro: true,
           // tambahkan field lain jika butuh
+          
         }
       } 
     },
   });
+  console.log('DEBUG_PROFILE:', widget.profile);
 
   if (!widget) {
     return ResponseHelper.error(
