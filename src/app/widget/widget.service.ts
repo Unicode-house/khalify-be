@@ -205,56 +205,55 @@ export class WidgetService extends ResponseHelper {
   }
 
   async getDetail(id: string) {
-    return `hello  world`
-  // try {
-  //   // 1. Validasi Input (Basic Null Safety)
-  //   if (!id) {
-  //     return ResponseHelper.error('ID tidak boleh kosong', 400, 'BAD_REQUEST');
-  //   }
+  try {
+    // 1. Validasi Input (Basic Null Safety)
+    if (!id) {
+      return ResponseHelper.error('ID tidak boleh kosong', 400, 'BAD_REQUEST');
+    }
 
-  //   const widget = await this.ps.client.widget.findUnique({
-  //     where: { dbID: id },
-  //     include: {
-  //       profile: true,
-  //     },
-  //   });
+    const widget = await this.ps.client.widget.findUnique({
+      where: { dbID: id },
+      include: {
+        profile: true,
+      },
+    });
 
-  //   // 2. Jika data tidak ada di database
-  //   if (!widget) {
-  //     return ResponseHelper.error('Widget tidak ditemukan', 404, 'NOT_FOUND');
-  //   }
+    // 2. Jika data tidak ada di database
+    if (!widget) {
+      return ResponseHelper.error('Widget tidak ditemukan', 404, 'NOT_FOUND');
+    }
 
-  //   // 3. Mapping dengan Null Safety (Optional Chaining & Nullish Coalescing)
-  //   const responseData = {
-  //     id: widget.id,
-  //     token: widget.token ?? '',
-  //     link: widget.link ?? '',
-  //     name: widget.name ?? 'Unnamed Widget',
-  //     dbID: widget.dbID,
-  //     create_at: widget.create_at,
-  //     profileId: widget.profileId,
-  //     // Jika profile null, isPro otomatis false tanpa crash
-  //     isPro: widget.profile?.isPro ?? false, 
-  //   };
+    // 3. Mapping dengan Null Safety (Optional Chaining & Nullish Coalescing)
+    const responseData = {
+      id: widget.id,
+      token: widget.token ?? '',
+      link: widget.link ?? '',
+      name: widget.name ?? 'Unnamed Widget',
+      dbID: widget.dbID,
+      create_at: widget.create_at,
+      profileId: widget.profileId,
+      // Jika profile null, isPro otomatis false tanpa crash
+      isPro: widget.profile?.isPro ?? false, 
+    };
 
-  //   return ResponseHelper.success([responseData], 'Widget retrieved successfully');
+    return ResponseHelper.success([responseData], 'Widget retrieved successfully');
 
-  // } catch (error: any) {
-  //   // 4. Logging yang lebih spesifik untuk debugging di Vercel Logs
-  //   console.error('SERVER_CRASH_DETAIL:', {
-  //     message: error.message,
-  //     stack: error.stack,
-  //     id_requested: id
-  //   });
+  } catch (error: any) {
+    // 4. Logging yang lebih spesifik untuk debugging di Vercel Logs
+    console.error('SERVER_CRASH_DETAIL:', {
+      message: error.message,
+      stack: error.stack,
+      id_requested: id
+    });
 
-  //   // Jangan tampilkan pesan "kasar" ke user/client di production, 
-  //   // cukup simpan di console log saja.
-  //   return ResponseHelper.error(
-  //     'Terjadi kesalahan internal pada server', 
-  //     500, 
-  //     error.code ?? 'INTERNAL_SERVER_ERROR'
-  //   );
-  // }
+    // Jangan tampilkan pesan "kasar" ke user/client di production, 
+    // cukup simpan di console log saja.
+    return ResponseHelper.error(
+      'Terjadi kesalahan internal pada server', 
+      500, 
+      error.code ?? 'INTERNAL_SERVER_ERROR'
+    );
+  }
 }
 
   async getWidgetByEmail(token: string) {
