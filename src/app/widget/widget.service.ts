@@ -286,6 +286,42 @@ export class WidgetService extends ResponseHelper {
     return ResponseHelper.success(widgets, 'Widgets retrieved successfully');
   }
 
+  async getEmbedData(dbID: string) {
+  try {
+    // 1. Cari widget berdasarkan dbID (ID Database Notion)
+    const widget = await this.ps.client.widget.findUnique({
+      where: { dbID: dbID },
+      include: {
+        profile: {
+          select: {
+            isPro: true, // Kita hanya butuh status PRO-nya
+          },
+        },
+      },
+    });
+
+    // 2. Validasi jika widget tidak ditemukan
+    if (!widget) {
+      return ResponseHelper.error('Widget not found', 404, 'NOT_FOUND');
+    }
+
+    // 3. Gabungkan data widget dengan status isPro dari Profile
+    const result = {
+      id: widget.id,
+      name: widget.name,
+      dbID: widget.dbID,
+      token: widget.token, // Dibutuhkan FE untuk hit API Notion
+      link: widget.link,
+      // Pengecekan aman: jika profile null (data korup), default ke false
+      isPro: widget.profile?.isPro ?? false,
+    };
+
+    return ResponseHelper.success(result, 'Embed data retrieved successfully');
+  } catch (error) {
+    console.error('Error fetching embed data:', error);
+    return ResponseHelper.error('Internal Server Error', 500, 'INTERNAL_SERVER_ERROR');
+  }
+}
   // CREATE
   async create(dto: CreateWidgetDto) {
     // 1. Decode token (dto.email sepertinya berisi token JWT)

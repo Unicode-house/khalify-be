@@ -11,7 +11,11 @@ import {
   Query,
 } from '@nestjs/common';
 import { WidgetService } from './widget.service';
-import { CreateWidgetBulkDto, CreateWidgetDto, UpdateWidgetDto } from './widget.dto';
+import {
+  CreateWidgetBulkDto,
+  CreateWidgetDto,
+  UpdateWidgetDto,
+} from './widget.dto';
 
 @Controller('widgets')
 export class WidgetController {
@@ -101,5 +105,9 @@ export class WidgetController {
   @Delete('/delete/:id')
   async delete(@Param('id') id: string) {
     return this.widgetService.delete(id);
+  }
+  @Get('embed/:dbID')
+  async getEmbed(@Param('dbID') dbID: string) {
+    return await this.widgetService.getEmbedData(dbID);
   }
 }
