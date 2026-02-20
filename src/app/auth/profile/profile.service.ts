@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateProfileDto } from './dto/create-profile.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ResponseHelper } from 'src/helper/base.response';
 
 @Injectable()
 export class ProfileService {

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   MethodNotAllowedException,
   NotFoundException,
@@ -8,6 +9,7 @@ import {
   CreateWidgetBulkDto,
   CreateWidgetDto,
   UpdateWidgetDto,
+  UpdateBioWidgetDto,
 } from './widget.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { ResponseHelper } from '../../helper/base.response';
@@ -288,32 +290,42 @@ export class WidgetService extends ResponseHelper {
 
   async getEmbedData(dbID: string) {
   try {
-    // 1. Cari widget berdasarkan dbID (ID Database Notion)
+    // 1. Cari widget dan sertakan status isPro dari profile
     const widget = await this.ps.client.widget.findUnique({
       where: { dbID: dbID },
       include: {
         profile: {
           select: {
-            isPro: true, // Kita hanya butuh status PRO-nya
+            isPro: true, 
           },
         },
       },
     });
 
-    // 2. Validasi jika widget tidak ditemukan
     if (!widget) {
       return ResponseHelper.error('Widget not found', 404, 'NOT_FOUND');
     }
 
-    // 3. Gabungkan data widget dengan status isPro dari Profile
+    const isProUser = widget.profile?.isPro ?? false;
+
+    // 2. Susun Response Data
     const result = {
       id: widget.id,
       name: widget.name,
       dbID: widget.dbID,
-      token: widget.token, // Dibutuhkan FE untuk hit API Notion
+      token: widget.token,
       link: widget.link,
-      // Pengecekan aman: jika profile null (data korup), default ke false
-      isPro: widget.profile?.isPro ?? false,
+      isPro: isProUser,
+      
+      // 3. Logika showBranding: Hanya muncul jika User PRO dan Toggle Aktif
+      // Kita bungkus dalam objek branding agar rapi di sisi Frontend
+      branding: (isProUser) ? {
+        customName: widget.customName,
+        customAvatar: widget.customAvatar,
+        customUsername: widget.customUsername,
+        customBio: widget.customBio,
+        customLink: widget.customLink,
+      } : null
     };
 
     return ResponseHelper.success(result, 'Embed data retrieved successfully');
@@ -410,6 +422,38 @@ export class WidgetService extends ResponseHelper {
       201,
     );
   }
+
+async updateWidgetBranding(widgetId: string, profileId: string, dto: UpdateBioWidgetDto) {
+  // 1. Cari widget & cek status Pro pemiliknya
+  const widget = await this.ps.client.widget.findUnique({
+    where: { id: widgetId },
+    include: { profile: true }
+  });
+
+  if (!widget) throw new NotFoundException('Widget tidak ditemukan');
+  
+  // 2. PROTEKSI: Cek apakah user adalah pemilik & apakah dia PRO
+  if (widget.profileId !== profileId) throw new ForbiddenException('Akses ditolak');
+  
+  if (!widget.profile.isPro) {
+    throw new BadRequestException('Fitur Custom Branding hanya untuk akun PRO!');
+  }
+
+  // 3. Update data widget
+  const updatedWidget = await this.ps.client.widget.update({
+    where: { id: widgetId },
+    data: {
+      name: dto.name,
+      customAvatar: dto.customAvatar,
+      customUsername: dto.customUsername,
+      customName: dto.customName,
+      customBio: dto.customBio,
+      customLink: dto.customLink
+    }
+  });
+
+  return ResponseHelper.success(updatedWidget, 'Widget branding updated!');
+}
 
   async createBulk(dto: CreateWidgetBulkDto) {
     const decode = await this.js.decode(dto.email);

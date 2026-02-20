@@ -6,16 +6,21 @@ import {
   Header,
   Headers,
   Param,
+  Patch,
   Post,
   Put,
   Query,
+  UseGuards,
+  Req,
 } from '@nestjs/common';
 import { WidgetService } from './widget.service';
 import {
   CreateWidgetBulkDto,
   CreateWidgetDto,
+  UpdateBioWidgetDto,
   UpdateWidgetDto,
 } from './widget.dto';
+import { JwtAuthGuard } from '../../helper/jwt-bio-guards';
 
 @Controller('widgets')
 export class WidgetController {
@@ -99,6 +104,16 @@ export class WidgetController {
     return this.widgetService.update(id, dto);
   }
 
+  @Patch('bio/:id')
+  @UseGuards(JwtAuthGuard) // Asumsi kamu pakai JWT
+  async updateBranding(
+    @Param('id') id: string,
+    @Req() req: any,
+    @Body() dto: UpdateBioWidgetDto,
+  ) {
+    const profileId = req.user.profileId; // Ambil ID Profile dari token
+    return await this.widgetService.updateWidgetBranding(id, profileId, dto);
+  }
   /**
    * DELETE WIDGET
    */

@@ -99,6 +99,12 @@ model widget {
   dbID       String   @unique
   create_at  DateTime @default(now())
   
+  customName    String?
+  customAvatar  String?  // URL Foto Profil khusus widget ini
+  customUsername String?
+  customBio     String?
+  customLink    String?
+
   // relation
   profileId String
   profile   Profile @relation(fields: [profileId], references: [id])
