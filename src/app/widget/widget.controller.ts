@@ -104,14 +104,15 @@ export class WidgetController {
     return this.widgetService.update(id, dto);
   }
 
-  @Patch('bio/:id')
-  @UseGuards(JwtAuthGuard) // Asumsi kamu pakai JWT
+  @Patch(':id/branding')
+  @UseGuards(JwtAuthGuard)
   async updateBranding(
     @Param('id') id: string,
     @Req() req: any,
     @Body() dto: UpdateBioWidgetDto,
   ) {
-    const profileId = req.user.profileId; // Ambil ID Profile dari token
+    // req.user sekarang akan berisi data dari JwtStrategy.validate()
+    const profileId = req.user.profileId;
     return await this.widgetService.updateWidgetBranding(id, profileId, dto);
   }
   /**

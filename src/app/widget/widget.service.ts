@@ -290,25 +290,36 @@ export class WidgetService extends ResponseHelper {
 
   async getEmbedData(dbID: string) {
   try {
-    // 1. Cari widget dan sertakan status isPro dari profile
+    // Log 1: Memastikan ID yang masuk ke API
+    console.log(`[GET_EMBED] Fetching widget for dbID: ${dbID}`);
+
     const widget = await this.ps.client.widget.findUnique({
       where: { dbID: dbID },
       include: {
         profile: {
           select: {
-            isPro: true, 
+            isPro: true,
           },
         },
       },
     });
 
+    // Log 2: Cek apakah data mentah dari Prisma ditemukan
     if (!widget) {
+      console.warn(`[GET_EMBED] Widget NOT FOUND for dbID: ${dbID}`);
       return ResponseHelper.error('Widget not found', 404, 'NOT_FOUND');
     }
 
-    const isProUser = widget.profile?.isPro ?? false;
+    // Log 3: Cek status Profile (Sering jadi penyebab isPro false/error)
+    if (!widget.profile) {
+      console.error(`[GET_EMBED] CRITICAL: Widget found but Profile is NULL for profileId: ${widget.profileId}`);
+    }
 
-    // 2. Susun Response Data
+    const isProUser = widget.profile?.isPro ?? false;
+    
+    // Log 4: Cek status Branding (Untuk Debugging User Pro)
+    console.log(`[GET_EMBED] Status - UserPro: ${isProUser}`);
+
     const result = {
       id: widget.id,
       name: widget.name,
@@ -317,8 +328,7 @@ export class WidgetService extends ResponseHelper {
       link: widget.link,
       isPro: isProUser,
       
-      // 3. Logika showBranding: Hanya muncul jika User PRO dan Toggle Aktif
-      // Kita bungkus dalam objek branding agar rapi di sisi Frontend
+      // Mengirim data branding hanya jika memenuhi syarat
       branding: (isProUser) ? {
         customName: widget.customName,
         customAvatar: widget.customAvatar,
@@ -328,10 +338,19 @@ export class WidgetService extends ResponseHelper {
       } : null
     };
 
+    // Log 5: Lihat hasil akhir sebelum dikirim ke FE
+    console.log(`[GET_EMBED] Final Response Branding:`, result.branding ? 'ATTACHED' : 'NULL');
+
     return ResponseHelper.success(result, 'Embed data retrieved successfully');
   } catch (error) {
-    console.error('Error fetching embed data:', error);
-    return ResponseHelper.error('Internal Server Error', 500, 'INTERNAL_SERVER_ERROR');
+    // Log 6: Error mendalam (Prisma Error, Query Error, dsb)
+    console.error('[GET_EMBED] SYSTEM ERROR:', error);
+    
+    return ResponseHelper.error(
+      'Internal Server Error', 
+      500, 
+      'INTERNAL_SERVER_ERROR'
+    );
   }
 }
   // CREATE
