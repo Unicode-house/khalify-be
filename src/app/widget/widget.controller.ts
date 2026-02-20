@@ -104,7 +104,7 @@ export class WidgetController {
     return this.widgetService.update(id, dto);
   }
 
-  @Patch(':id/branding')
+  @Patch('bio/:id')
   @UseGuards(JwtAuthGuard)
   async updateBranding(
     @Param('id') id: string,
