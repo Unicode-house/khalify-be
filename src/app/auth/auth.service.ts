@@ -93,6 +93,7 @@ export class AuthService extends ResponseHelper {
     const tokenJWT = this.js.sign({
       sub: 'magic-link',
       email,
+      profileId: profile ? profile.id : null,
     });
     if (!profile) {
       await this.ps.client.profile.create({
