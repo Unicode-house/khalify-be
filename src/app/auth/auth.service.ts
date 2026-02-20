@@ -58,60 +58,59 @@ export class AuthService extends ResponseHelper {
   }
 
   async verifyToken(token: string, email: string) {
-    const magicLink = await this.ps.client.magicLink.findFirst({
-      where: {
-        token,
-      },
-    });
+  const magicLink = await this.ps.client.magicLink.findFirst({
+    where: { token },
+  });
 
-    if (!magicLink) {
-      return ResponseHelper.error(
-        'Invalid or expired magic link',
-        400,
-        'INVALID_MAGIC_LINK',
-      );
-    }
-    await this.ps.client.magicLink.update({
-      where: { id: magicLink.id },
-      data: { used: true },
-    });
-
-    const user = await this.ps.client.user.findFirst({
-      where: {
-        email: email,
-      },
-    });
-
-    if (!user) {
-      throw new HttpException('User not found', 404);
-    }
-
-    const profile = await this.ps.client.profile.findFirst({
-      where: { userId: user.id },
-    });
-
-    const tokenJWT = this.js.sign({
-      sub: 'magic-link',
-      email,
-      profileId: profile ? profile.id : null,
-    });
-    if (!profile) {
-      await this.ps.client.profile.create({
-        data: {
-          name: 'New User',
-          username: 'user_' + Date.now() + Math.floor(Math.random() * 1000),
-          avatarUrl: '',
-          bio: 'the human',
-          userId: user.id,
-        },
-      });
-    }
-    return ResponseHelper.success(
-      {
-        user,
-        jwt: tokenJWT,
-      },
-      'Token verified successfully',
-    );
+  if (!magicLink) {
+    return ResponseHelper.error('Invalid or expired magic link', 400, 'INVALID_MAGIC_LINK');
   }
+
+  await this.ps.client.magicLink.update({
+    where: { id: magicLink.id },
+    data: { used: true },
+  });
+
+  const user = await this.ps.client.user.findFirst({
+    where: { email: email },
+  });
+
+  if (!user) {
+    throw new HttpException('User not found', 404);
+  }
+
+  // 1. Cari profile
+  let profile = await this.ps.client.profile.findFirst({
+    where: { userId: user.id },
+  });
+
+  // 2. JIKA profile tidak ada, BUAT DULU (Penting!)
+  if (!profile) {
+    profile = await this.ps.client.profile.create({
+      data: {
+        name: 'New User',
+        username: 'user_' + Date.now() + Math.floor(Math.random() * 1000),
+        avatarUrl: '',
+        bio: 'the human',
+        userId: user.id,
+      },
+    });
+    console.log(`[AUTH] Profile created for new user: ${profile.id}`);
+  }
+
+  // 3. SEKARANG generate JWT (Pastikan profileId sudah pasti ada nilainya)
+  const tokenJWT = this.js.sign({
+    sub: 'magic-link',
+    email,
+    profileId: profile.id, // Sekarang tidak akan null lagi
+  });
+
+  return ResponseHelper.success(
+    {
+      user,
+      jwt: tokenJWT,
+    },
+    'Token verified successfully',
+  );
+}
 }
