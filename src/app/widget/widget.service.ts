@@ -288,10 +288,9 @@ export class WidgetService extends ResponseHelper {
     return ResponseHelper.success(widgets, 'Widgets retrieved successfully');
   }
 
-  async getEmbedData(dbID: string) {
+ async getEmbedData(dbID: string) {
   try {
-    // Log 1: Memastikan ID yang masuk ke API
-    console.log(`[GET_EMBED] Fetching widget for dbID: ${dbID}`);
+    console.log(`[GET_EMBED] Memanggil data untuk dbID: ${dbID}`);
 
     const widget = await this.ps.client.widget.findUnique({
       where: { dbID: dbID },
@@ -304,53 +303,38 @@ export class WidgetService extends ResponseHelper {
       },
     });
 
-    // Log 2: Cek apakah data mentah dari Prisma ditemukan
     if (!widget) {
-      console.warn(`[GET_EMBED] Widget NOT FOUND for dbID: ${dbID}`);
+      console.warn(`[GET_EMBED] Widget dengan dbID ${dbID} tidak ditemukan.`);
       return ResponseHelper.error('Widget not found', 404, 'NOT_FOUND');
     }
 
-    // Log 3: Cek status Profile (Sering jadi penyebab isPro false/error)
-    if (!widget.profile) {
-      console.error(`[GET_EMBED] CRITICAL: Widget found but Profile is NULL for profileId: ${widget.profileId}`);
-    }
-
     const isProUser = widget.profile?.isPro ?? false;
-    
-    // Log 4: Cek status Branding (Untuk Debugging User Pro)
-    console.log(`[GET_EMBED] Status - UserPro: ${isProUser}`);
 
+    // Susun response agar mudah dibaca Frontend
     const result = {
       id: widget.id,
-      name: widget.name,
+      name: widget.name, // Nama internal widget
       dbID: widget.dbID,
       token: widget.token,
       link: widget.link,
       isPro: isProUser,
       
-      // Mengirim data branding hanya jika memenuhi syarat
+      // Data Branding Custom (Hanya dikirim jika User PRO dan Toggle ON)
       branding: (isProUser) ? {
-        customName: widget.customName,
-        customAvatar: widget.customAvatar,
-        customUsername: widget.customUsername,
-        customBio: widget.customBio,
+        displayName: widget.customName || widget.name, // Fallback ke nama widget jika customName kosong
+        avatarUrl: widget.customAvatar,
+        username: widget.customUsername,
+        bio: widget.customBio,
         customLink: widget.customLink,
       } : null
     };
 
-    // Log 5: Lihat hasil akhir sebelum dikirim ke FE
-    console.log(`[GET_EMBED] Final Response Branding:`, result.branding ? 'ATTACHED' : 'NULL');
-
+    console.log(`[GET_EMBED] Result Branding:`, result.branding ? 'AKTIF' : 'NON-AKTIF/FREE');
+    
     return ResponseHelper.success(result, 'Embed data retrieved successfully');
   } catch (error) {
-    // Log 6: Error mendalam (Prisma Error, Query Error, dsb)
-    console.error('[GET_EMBED] SYSTEM ERROR:', error);
-    
-    return ResponseHelper.error(
-      'Internal Server Error', 
-      500, 
-      'INTERNAL_SERVER_ERROR'
-    );
+    console.error('[GET_EMBED] Error:', error);
+    return ResponseHelper.error('Internal Server Error', 500);
   }
 }
   // CREATE
