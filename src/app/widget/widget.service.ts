@@ -207,56 +207,63 @@ export class WidgetService extends ResponseHelper {
   }
 
   async getDetail(id: string) {
-  try {
-    // 1. Validasi Input (Basic Null Safety)
-    if (!id) {
-      return ResponseHelper.error('ID tidak boleh kosong', 400, 'BAD_REQUEST');
+    try {
+      if (!id) {
+        return ResponseHelper.error(
+          'ID tidak boleh kosong',
+          400,
+          'BAD_REQUEST',
+        );
+      }
+
+      const widget = await this.ps.client.widget.findUnique({
+        where: { dbID: id },
+        include: {
+          profile: true,
+        },
+      });
+
+      if (!widget) {
+        return ResponseHelper.error('Widget tidak ditemukan', 404, 'NOT_FOUND');
+      }
+
+      // UPDATE: Masukkan field branding ke dalam mapping responseData
+      const responseData = {
+        id: widget.id,
+        token: widget.token ?? '',
+        link: widget.link ?? '',
+        name: widget.name ?? 'Unnamed Widget',
+        dbID: widget.dbID,
+        create_at: widget.create_at,
+        profileId: widget.profileId,
+        isPro: widget.profile?.isPro ?? false,
+
+        // --- FIELD BARU DISINI ---
+        customName: widget.customName,
+        customAvatar: widget.customAvatar,
+        customUsername: widget.customUsername,
+        customBio: widget.customBio,
+        customLink: widget.customLink,
+      };
+
+      return ResponseHelper.success(
+        [responseData],
+        'Widget retrieved successfully',
+      );
+    } catch (error: any) {
+      console.error('SERVER_CRASH_DETAIL:', {
+        message: error.message,
+        stack: error.stack,
+        id_requested: id,
+      });
+
+      return ResponseHelper.error(
+        'Terjadi kesalahan internal pada server',
+        500,
+        error.code ?? 'INTERNAL_SERVER_ERROR',
+      );
     }
-
-    const widget = await this.ps.client.widget.findUnique({
-      where: { dbID: id },
-      include: {
-        profile: true,
-      },
-    });
-
-    // 2. Jika data tidak ada di database
-    if (!widget) {
-      return ResponseHelper.error('Widget tidak ditemukan', 404, 'NOT_FOUND');
-    }
-
-    // 3. Mapping dengan Null Safety (Optional Chaining & Nullish Coalescing)
-    const responseData = {
-      id: widget.id,
-      token: widget.token ?? '',
-      link: widget.link ?? '',
-      name: widget.name ?? 'Unnamed Widget',
-      dbID: widget.dbID,
-      create_at: widget.create_at,
-      profileId: widget.profileId,
-      // Jika profile null, isPro otomatis false tanpa crash
-      isPro: widget.profile?.isPro ?? false, 
-    };
-
-    return ResponseHelper.success([responseData], 'Widget retrieved successfully');
-
-  } catch (error: any) {
-    // 4. Logging yang lebih spesifik untuk debugging di Vercel Logs
-    console.error('SERVER_CRASH_DETAIL:', {
-      message: error.message,
-      stack: error.stack,
-      id_requested: id
-    });
-
-    // Jangan tampilkan pesan "kasar" ke user/client di production, 
-    // cukup simpan di console log saja.
-    return ResponseHelper.error(
-      'Terjadi kesalahan internal pada server', 
-      500, 
-      error.code ?? 'INTERNAL_SERVER_ERROR'
-    );
   }
-}
 
   async getWidgetByEmail(token: string) {
     const payload = this.js.decode(token);
@@ -288,55 +295,67 @@ export class WidgetService extends ResponseHelper {
     return ResponseHelper.success(widgets, 'Widgets retrieved successfully');
   }
 
- async getEmbedData(dbID: string) {
-  try {
-    console.log(`[GET_EMBED] Memanggil data untuk dbID: ${dbID}`);
+  async getEmbedData(dbID: string) {
+    try {
+      console.log(`[GET_EMBED] Memanggil data untuk dbID: ${dbID}`);
 
-    const widget = await this.ps.client.widget.findUnique({
-      where: { dbID: dbID },
-      include: {
-        profile: {
-          select: {
-            isPro: true,
+      const widget = await this.ps.client.widget.findUnique({
+        where: { dbID: dbID },
+        include: {
+          profile: {
+            select: {
+              isPro: true,
+            },
           },
         },
-      },
-    });
+      });
 
-    if (!widget) {
-      console.warn(`[GET_EMBED] Widget dengan dbID ${dbID} tidak ditemukan.`);
-      return ResponseHelper.error('Widget not found', 404, 'NOT_FOUND');
+      if (!widget) {
+        console.warn(`[GET_EMBED] Widget dengan dbID ${dbID} tidak ditemukan.`);
+        return ResponseHelper.error('Widget not found', 404, 'NOT_FOUND');
+      }
+
+      const isProUser = widget.profile?.isPro ?? false;
+
+      // Susun response agar mudah dibaca Frontend
+      const result = {
+        id: widget.id,
+        name: widget.name, // Nama internal widget
+        dbID: widget.dbID,
+        token: widget.token,
+        link: widget.link,
+        isPro: isProUser,
+
+        // Data Branding Custom (Hanya dikirim jika User PRO dan Toggle ON)
+        branding: isProUser
+          ? {
+              displayName: widget.customName || widget.name, // Fallback ke nama widget jika customName kosong
+              avatarUrl: widget.customAvatar,
+              username: widget.customUsername,
+              bio: widget.customBio,
+              customLink: widget.customLink,
+            }
+          : null,
+      };
+
+      console.log(
+        `[GET_EMBED] Result Branding:`,
+        result.branding ? 'AKTIF' : 'NON-AKTIF/FREE',
+      );
+
+      return ResponseHelper.success(
+        result,
+        'Embed data retrieved successfully',
+      );
+    } catch (error) {
+      console.error('[GET_EMBED] Error:', error);
+      return ResponseHelper.error(
+        'Internal Server Error',
+        500,
+        'INTERNAL_SERVER_ERROR',
+      );
     }
-
-    const isProUser = widget.profile?.isPro ?? false;
-
-    // Susun response agar mudah dibaca Frontend
-    const result = {
-      id: widget.id,
-      name: widget.name, // Nama internal widget
-      dbID: widget.dbID,
-      token: widget.token,
-      link: widget.link,
-      isPro: isProUser,
-      
-      // Data Branding Custom (Hanya dikirim jika User PRO dan Toggle ON)
-      branding: (isProUser) ? {
-        displayName: widget.customName || widget.name, // Fallback ke nama widget jika customName kosong
-        avatarUrl: widget.customAvatar,
-        username: widget.customUsername,
-        bio: widget.customBio,
-        customLink: widget.customLink,
-      } : null
-    };
-
-    console.log(`[GET_EMBED] Result Branding:`, result.branding ? 'AKTIF' : 'NON-AKTIF/FREE');
-    
-    return ResponseHelper.success(result, 'Embed data retrieved successfully');
-  } catch (error) {
-    console.error('[GET_EMBED] Error:', error);
-    return ResponseHelper.error('Internal Server Error', 500, 'INTERNAL_SERVER_ERROR');
   }
-}
   // CREATE
   async create(dto: CreateWidgetDto) {
     // 1. Decode token (dto.email sepertinya berisi token JWT)
@@ -426,37 +445,44 @@ export class WidgetService extends ResponseHelper {
     );
   }
 
-async updateWidgetBranding(widgetId: string, profileId: string, dto: UpdateBioWidgetDto) {
-  // 1. Cari widget & cek status Pro pemiliknya
-  const widget = await this.ps.client.widget.findUnique({
-    where: { id: widgetId },
-    include: { profile: true }
-  });
+  async updateWidgetBranding(
+    widgetId: string,
+    profileId: string,
+    dto: UpdateBioWidgetDto,
+  ) {
+    // 1. Cari widget & cek status Pro pemiliknya
+    const widget = await this.ps.client.widget.findUnique({
+      where: { id: widgetId },
+      include: { profile: true },
+    });
 
-  if (!widget) throw new NotFoundException('Widget tidak ditemukan');
-  
-  // 2. PROTEKSI: Cek apakah user adalah pemilik & apakah dia PRO
-  if (widget.profileId !== profileId) throw new ForbiddenException('Akses ditolak');
-  
-  if (!widget.profile.isPro) {
-    throw new BadRequestException('Fitur Custom Branding hanya untuk akun PRO!');
-  }
+    if (!widget) throw new NotFoundException('Widget tidak ditemukan');
 
-  // 3. Update data widget
-  const updatedWidget = await this.ps.client.widget.update({
-    where: { id: widgetId },
-    data: {
-      name: dto.name,
-      customAvatar: dto.customAvatar,
-      customUsername: dto.customUsername,
-      customName: dto.customName,
-      customBio: dto.customBio,
-      customLink: dto.customLink
+    // 2. PROTEKSI: Cek apakah user adalah pemilik & apakah dia PRO
+    if (widget.profileId !== profileId)
+      throw new ForbiddenException('Akses ditolak');
+
+    if (!widget.profile.isPro) {
+      throw new BadRequestException(
+        'Fitur Custom Branding hanya untuk akun PRO!',
+      );
     }
-  });
 
-  return ResponseHelper.success(updatedWidget, 'Widget branding updated!');
-}
+    // 3. Update data widget
+    const updatedWidget = await this.ps.client.widget.update({
+      where: { id: widgetId },
+      data: {
+        name: dto.name,
+        customAvatar: dto.customAvatar,
+        customUsername: dto.customUsername,
+        customName: dto.customName,
+        customBio: dto.customBio,
+        customLink: dto.customLink,
+      },
+    });
+
+    return ResponseHelper.success(updatedWidget, 'Widget branding updated!');
+  }
 
   async createBulk(dto: CreateWidgetBulkDto) {
     const decode = await this.js.decode(dto.email);
