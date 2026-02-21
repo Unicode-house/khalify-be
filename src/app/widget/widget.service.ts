@@ -334,7 +334,7 @@ export class WidgetService extends ResponseHelper {
     return ResponseHelper.success(result, 'Embed data retrieved successfully');
   } catch (error) {
     console.error('[GET_EMBED] Error:', error);
-    return ResponseHelper.error('Internal Server Error', 500);
+    return ResponseHelper.error('Internal Server Error', 500, 'INTERNAL_SERVER_ERROR');
   }
 }
   // CREATE
