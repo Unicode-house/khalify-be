@@ -1,6 +1,10 @@
 {
   "compilerOptions": {
-    "module": "commonjs",
+    "module": "CommonJS",
+    "moduleResolution": "Node", 
+    /* Tambahkan baris ini di sini */
+    "ignoreDeprecations": "5.0", 
+    
     "declaration": true,
     "removeComments": true,
     "emitDecoratorMetadata": true,
@@ -10,7 +14,10 @@
     "sourceMap": true,
     "outDir": "./dist",
     "baseUrl": "./",
-    "moduleResolution": "node",
+    "paths": {
+      "src/*": ["src/*"]
+    },
+    "types": ["node", "jest", "multer"],
     "incremental": true,
     "skipLibCheck": true,
     "strictNullChecks": false,

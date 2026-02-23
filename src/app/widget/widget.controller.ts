@@ -12,6 +12,8 @@ import {
   Query,
   UseGuards,
   Req,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
 import { WidgetService } from './widget.service';
 import {
@@ -21,10 +23,13 @@ import {
   UpdateWidgetDto,
 } from './widget.dto';
 import { JwtAuthGuard } from '../../helper/jwt-bio-guards';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ResponseHelper } from 'src/helper/base.response';
+import { CloudinaryService } from 'src/helper/cloudinary.service';
 
 @Controller('widgets')
 export class WidgetController {
-  constructor(private readonly widgetService: WidgetService) {}
+  constructor(private readonly widgetService: WidgetService, private readonly cloudinaryService: CloudinaryService,) {}
 
   /**
    * GET ALL WIDGETS
@@ -125,5 +130,31 @@ export class WidgetController {
   @Get('embed/:dbID')
   async getEmbed(@Param('dbID') dbID: string) {
     return await this.widgetService.getEmbedData(dbID);
+  }
+
+  @Patch(':dbID/upload-avatar')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(FileInterceptor('file')) // Nama field di FormData harus 'file'
+  async uploadAvatar(
+    @Param('dbID') dbID: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: any,
+  ) {
+    // 1. Upload ke Cloudinary
+    const result = await this.cloudinaryService.uploadImage(file);
+
+    // 2. Ambil URL aman (https) dari Cloudinary
+    const imageUrl = result.secure_url;
+
+    // 3. Simpan link tersebut ke database (Table Widget)
+    const profileId = req.user.profileId; // Dari JWT
+    await this.widgetService.updateWidgetBranding(dbID, profileId, {
+      customAvatar: imageUrl,
+    });
+
+    return ResponseHelper.success(
+      { url: imageUrl },
+      'Avatar uploaded and saved successfully',
+    );
   }
 }

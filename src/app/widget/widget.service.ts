@@ -264,7 +264,23 @@ export class WidgetService extends ResponseHelper {
       );
     }
   }
+async updateWidgetAvatar(dbID: string, profileId: string, imageUrl: string) {
+  // Pastikan pemilik widget yang mengupdate
+  const widget = await this.ps.client.widget.findUnique({
+    where: { dbID: dbID },
+  });
 
+  if (!widget || widget.profileId !== profileId) {
+    throw new ForbiddenException('Akses ditolak atau widget tidak ditemukan');
+  }
+
+  return await this.ps.client.widget.update({
+    where: { dbID: dbID },
+    data: {
+      customAvatar: imageUrl,
+    },
+  });
+}
   async getWidgetByEmail(token: string) {
     const payload = this.js.decode(token);
 
