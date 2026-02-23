@@ -6,8 +6,8 @@ import { JwtModule } from '@nestjs/jwt';
 import { AuthModule } from '../auth/auth.module';
 import { PassportModule } from '@nestjs/passport';
 import { JwtStrategy } from 'src/helper/jwt-bio-guards';
-import { CloudinaryService } from 'src/helper/cloudinary.service';
-import { CloudinaryProvider } from 'src/helper/cloudinary.provider';
+import { CloudinaryService } from '../../helper/cloudinary.service';
+import { CloudinaryProvider } from '../../helper/cloudinary.provider';
 @Module({
   imports: [
     PassportModule.register({ defaultStrategy: 'jwt' }),

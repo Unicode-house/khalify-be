@@ -25,7 +25,7 @@ import {
 import { JwtAuthGuard } from '../../helper/jwt-bio-guards';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ResponseHelper } from 'src/helper/base.response';
-import { CloudinaryService } from 'src/helper/cloudinary.service';
+import { CloudinaryService } from '../../helper/cloudinary.service';
 
 @Controller('widgets')
 export class WidgetController {
