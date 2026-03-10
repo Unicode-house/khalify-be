@@ -48,7 +48,7 @@ export class WidgetService extends ResponseHelper {
   }
 
   async getNotionDatabases(token: string) {
-    
+
     const body = {
       filter: {
         property: 'object',
@@ -408,106 +408,71 @@ export class WidgetService extends ResponseHelper {
   }
   // CREATE
   async create(dto: CreateWidgetDto) {
-    // 1. Decode token
-    let decode;
-    try {
-      decode = await this.js.decode(dto.email);
-    } catch (e) {
-      throw new BadRequestException('Invalid Auth Token');
-    }
+  // 1. Decode token
+  let decode;
+  try {
+    decode = await this.js.decode(dto.email);
+  } catch (e) {
+    throw new BadRequestException('Invalid Auth Token');
+  }
 
-    if (!decode || !decode.email) {
-      throw new BadRequestException('Invalid Token Payload');
-    }
+  if (!decode || !decode.email) {
+    throw new BadRequestException('Invalid Token Payload');
+  }
 
-    // 2. Cari User
-    const user = await this.ps.client.user.findFirst({
-      where: { email: decode.email },
-    });
+  // 2. Cari User
+  const user = await this.ps.client.user.findFirst({
+    where: { email: decode.email },
+  });
+  if (!user) throw new NotFoundException('User not found');
 
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
+  // 3. Cari Profile
+  const profile = await this.ps.client.profile.findFirst({
+    where: { userId: user.id },
+  });
+  if (!profile) throw new NotFoundException('Profile not found');
 
-    // 3. Cari Profile
-    const profile = await this.ps.client.profile.findFirst({
-      where: { userId: user.id },
-    });
+  // 4. Cek Duplikat Widget
+  const existingWidget = await this.ps.client.widget.findFirst({
+    where: { dbID: dto.dbID },
+  });
 
-    if (!profile) {
-      throw new NotFoundException('Profile not found');
-    }
-
-    // 4. Cek Duplikat Widget di Database Lokal
-    const existingWidget = await this.ps.client.widget.findFirst({
-      where: { dbID: dto.dbID },
-    });
-
-    if (existingWidget) {
-      // PERUBAHAN 1: Gunakan format object agar FE bisa baca 'code'-nya
-      throw new HttpException(
-        {
-          message: `Widget dengan Database ID ${dto.dbID} sudah terdaftar di sistem.`,
-          code: 'WIDGET_ALREADY_EXIST',
-        },
-        HttpStatus.METHOD_NOT_ALLOWED, // 405
-      );
-    }
-
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-
-    // 5. Simpan ke database lokal
-    const data = await this.ps.client.widget.create({
-      data: {
-        token: dto.token,
-        dbID: dto.dbID,
-        name: dto.name,
-        profileId: profile.id,
-        link: `https://widget.khlasify.com/embed/${code}?db=${dto.dbID}`,
-      },
-    });
-
-    // 6. Sinkronisasi dengan Server External (Vercel)
-    try {
-      const response = await axios.post(
-        'https://khlasify-widget-be.vercel.app/widgets/create',
-        data,
-      );
-    } catch (error: any) {
-      // PERUBAHAN 2: Hapus data lokal jika API external gagal (Rollback)
-      await this.ps.client.widget.delete({ where: { id: data.id } });
-
-      // PERUBAHAN 3: Lempar error (throw), bukan cuma di-console.log!
-      if (axios.isAxiosError(error) && error.response?.status === 405) {
-        throw new HttpException(
-          {
-            message:
-              'Database ini sudah terdaftar sebagai widget di server sinkronisasi. Silakan pilih database lain.',
-            code: 'WIDGET_ALREADY_EXIST',
-          },
-          HttpStatus.METHOD_NOT_ALLOWED, // Mengirim 405 ke FE
-        );
-      }
-
-      // Jika error lain (misal 500 dari external API)
-      throw new HttpException(
-        'Terjadi kesalahan saat menghubungi server external.',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-
-    // 7. Jika sukses semua, kembalikan response 201
-    return ResponseHelper.success(
+  if (existingWidget) {
+    throw new HttpException(
       {
-        user,
-        profile,
-        widget: data,
-        embedLink: `https://widget.khlasify.com/embed/${code}?db=${dto.dbID}`,
+        message: `Widget dengan Database ID ${dto.dbID} sudah terdaftar di sistem.`,
+        code: 'WIDGET_ALREADY_EXIST',
       },
-      'Widget created successfully',
-      201,
+      HttpStatus.METHOD_NOT_ALLOWED, // 405
     );
   }
+
+  // 5. Buat Kode Unik & Simpan ke Database
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const embedLink = `https://widget.khlasify.com/embed/${code}?db=${dto.dbID}`;
+
+  const data = await this.ps.client.widget.create({
+    data: {
+      token: dto.token,
+      dbID: dto.dbID,
+      name: dto.name,
+      profileId: profile.id,
+      link: embedLink,
+    },
+  });
+
+  // 6. LANGSUNG RETURN SUKSES (TIDAK PERLU AXIOS LAGI!)
+  return ResponseHelper.success(
+    {
+      user,
+      profile,
+      widget: data,
+      embedLink: embedLink,
+    },
+    'Widget created successfully',
+    201, // HTTP 201 Created
+  );
+}
 
   async updateWidgetBranding(
     widgetId: string,
