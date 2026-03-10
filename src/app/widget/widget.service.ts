@@ -48,7 +48,6 @@ export class WidgetService extends ResponseHelper {
   }
 
   async getNotionDatabases(token: string) {
-
     const body = {
       filter: {
         property: 'object',
@@ -408,71 +407,71 @@ export class WidgetService extends ResponseHelper {
   }
   // CREATE
   async create(dto: CreateWidgetDto) {
-  // 1. Decode token
-  let decode;
-  try {
-    decode = await this.js.decode(dto.email);
-  } catch (e) {
-    throw new BadRequestException('Invalid Auth Token');
-  }
+    // 1. Decode token
+    let decode;
+    try {
+      decode = await this.js.decode(dto.email);
+    } catch (e) {
+      throw new BadRequestException('Invalid Auth Token');
+    }
 
-  if (!decode || !decode.email) {
-    throw new BadRequestException('Invalid Token Payload');
-  }
+    if (!decode || !decode.email) {
+      throw new BadRequestException('Invalid Token Payload');
+    }
 
-  // 2. Cari User
-  const user = await this.ps.client.user.findFirst({
-    where: { email: decode.email },
-  });
-  if (!user) throw new NotFoundException('User not found');
+    // 2. Cari User
+    const user = await this.ps.client.user.findFirst({
+      where: { email: decode.email },
+    });
+    if (!user) throw new NotFoundException('User not found');
 
-  // 3. Cari Profile
-  const profile = await this.ps.client.profile.findFirst({
-    where: { userId: user.id },
-  });
-  if (!profile) throw new NotFoundException('Profile not found');
+    // 3. Cari Profile
+    const profile = await this.ps.client.profile.findFirst({
+      where: { userId: user.id },
+    });
+    if (!profile) throw new NotFoundException('Profile not found');
 
-  // 4. Cek Duplikat Widget
-  const existingWidget = await this.ps.client.widget.findFirst({
-    where: { dbID: dto.dbID },
-  });
+    // 4. Cek Duplikat Widget
+    const existingWidget = await this.ps.client.widget.findFirst({
+      where: { dbID: dto.dbID },
+    });
 
-  if (existingWidget) {
-    throw new HttpException(
-      {
-        message: `Widget dengan Database ID ${dto.dbID} sudah terdaftar di sistem.`,
-        code: 'WIDGET_ALREADY_EXIST',
+    if (existingWidget) {
+      throw new HttpException(
+        {
+          message: `Widget dengan Database ID ${dto.dbID} sudah terdaftar di sistem.`,
+          code: 'WIDGET_ALREADY_EXIST',
+        },
+        HttpStatus.METHOD_NOT_ALLOWED, // 405
+      );
+    }
+
+    // 5. Buat Kode Unik & Simpan ke Database
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const embedLink = `https://widget.khlasify.com/embed/${code}?db=${dto.dbID}`;
+
+    const data = await this.ps.client.widget.create({
+      data: {
+        token: dto.token,
+        dbID: dto.dbID,
+        name: dto.name,
+        profileId: profile.id,
+        link: embedLink,
       },
-      HttpStatus.METHOD_NOT_ALLOWED, // 405
+    });
+
+    // 6. LANGSUNG RETURN SUKSES (TIDAK PERLU AXIOS LAGI!)
+    return ResponseHelper.success(
+      {
+        user,
+        profile,
+        widget: data,
+        embedLink: embedLink,
+      },
+      'Widget created successfully',
+      201, // HTTP 201 Created
     );
   }
-
-  // 5. Buat Kode Unik & Simpan ke Database
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
-  const embedLink = `https://widget.khlasify.com/embed/${code}?db=${dto.dbID}`;
-
-  const data = await this.ps.client.widget.create({
-    data: {
-      token: dto.token,
-      dbID: dto.dbID,
-      name: dto.name,
-      profileId: profile.id,
-      link: embedLink,
-    },
-  });
-
-  // 6. LANGSUNG RETURN SUKSES (TIDAK PERLU AXIOS LAGI!)
-  return ResponseHelper.success(
-    {
-      user,
-      profile,
-      widget: data,
-      embedLink: embedLink,
-    },
-    'Widget created successfully',
-    201, // HTTP 201 Created
-  );
-}
 
   async updateWidgetBranding(
     widgetId: string,
@@ -512,7 +511,33 @@ export class WidgetService extends ResponseHelper {
 
     return ResponseHelper.success(updatedWidget, 'Widget branding updated!');
   }
+  async removeWidgetAvatar(widgetId: string, profileId: string) {
+    // 1. Ambil data SECUKUPNYA saja (hanya customAvatar dan profileId untuk keamanan)
+    const widget = await this.ps.client.widget.findUnique({
+      where: { id: widgetId },
+      select: { profileId: true, customAvatar: true },
+    });
 
+    if (!widget) throw new NotFoundException('Widget tidak ditemukan');
+    if (widget.profileId !== profileId)
+      throw new ForbiddenException('Akses ditolak');
+
+    // 2. CEK RESOURCE: Jika sudah kosong, JANGAN lakukan operasi UPDATE ke database
+    if (!widget.customAvatar) {
+      return ResponseHelper.success(
+        null,
+        'Avatar memang sudah kosong, tidak ada resource database yang terpakai.',
+      );
+    }
+
+    // 3. Jika ada isinya, baru lakukan query UPDATE
+    await this.ps.client.widget.update({
+      where: { id: widgetId },
+      data: { customAvatar: null },
+    });
+
+    return ResponseHelper.success(null, 'Avatar berhasil dihapus');
+  }
   async createBulk(dto: CreateWidgetBulkDto) {
     const decode = await this.js.decode(dto.email);
 

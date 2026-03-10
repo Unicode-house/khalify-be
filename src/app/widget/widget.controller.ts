@@ -29,7 +29,10 @@ import { CloudinaryService } from '../../helper/cloudinary.service';
 
 @Controller('widgets')
 export class WidgetController {
-  constructor(private readonly widgetService: WidgetService, private readonly cloudinaryService: CloudinaryService,) {}
+  constructor(
+    private readonly widgetService: WidgetService,
+    private readonly cloudinaryService: CloudinaryService,
+  ) {}
 
   /**
    * GET ALL WIDGETS
@@ -160,20 +163,10 @@ export class WidgetController {
 
   @Patch(':dbID/remove-avatar')
   @UseGuards(JwtAuthGuard)
-  async removeAvatar(
-    @Param('dbID') dbID: string,
-    @Req() req: any,
-  ) {
-    const profileId = req.user.profileId; // Dari JWT
+  async removeAvatar(@Param('dbID') dbID: string, @Req() req: any) {
+    const profileId = req.user.profileId;
 
-    // Kita panggil service yang sudah ada, tapi set customAvatar menjadi null / string kosong
-    await this.widgetService.updateWidgetBranding(dbID, profileId, {
-      customAvatar: null, // Ubah menjadi '' (string kosong) jika skema Prisma-mu tidak mengizinkan null
-    } as any); // Gunakan 'as any' sementara jika DTO-mu menolak nilai null
-
-    return ResponseHelper.success(
-      null,
-      'Avatar berhasil dihapus',
-    );
+    // Panggil fungsi spesifik yang sudah dioptimasi
+    return await this.widgetService.removeWidgetAvatar(dbID, profileId);
   }
 }
