@@ -48,7 +48,7 @@ export class WidgetService extends ResponseHelper {
   }
 
   async getNotionDatabases(token: string) {
-    // const token = process.env.NOTION_DATABASE_TOKEN;
+    
     const body = {
       filter: {
         property: 'object',
@@ -62,27 +62,59 @@ export class WidgetService extends ResponseHelper {
       'Content-Type': 'application/json',
     };
 
-    const { data } = await axios.post(
-      'https://api.notion.com/v1/search',
-      body,
-      {
-        headers,
-      },
-    );
+    try {
+      // 1. Ambil list database dari API Notion
+      const { data } = await axios.post(
+        'https://api.notion.com/v1/search',
+        body,
+        { headers },
+      );
 
-    const databases = data.results.map((db: any) => ({
-      id: db.id,
-      name: db.title?.[0]?.plain_text || 'Untitled',
-      url: db.url,
-      last_edited_time: db.last_edited_time,
-      icon: db.icon || null,
-    }));
+      // 2. Ambil semua ID widget yang sudah ada di database lokal kamu
+      // Kita gunakan 'select' agar Prisma hanya menarik kolom dbID saja (lebih ringan)
+      const existingWidgets = await this.ps.client.widget.findMany({
+        select: { dbID: true },
+      });
 
-    return ResponseHelper.success(
-      //  data,
-      databases,
-      'Notion Databases retrieved successfully',
-    );
+      // 3. Ubah ke bentuk Set agar proses pencocokan jauh lebih cepat (O(1) lookup)
+      const registeredDbIds = new Set(
+        existingWidgets.map((widget) => widget.dbID),
+      );
+
+      // 4. Map data dari Notion dan tambahkan flag 'isAlreadyWidget'
+      const databases = data.results.map((db: any) => ({
+        id: db.id,
+        name: db.title?.[0]?.plain_text || 'Untitled',
+        url: db.url,
+        last_edited_time: db.last_edited_time,
+        icon: db.icon || null,
+        // Jika ID dari Notion ada di dalam Set database lokal, jadikan true
+        isAlreadyWidget: registeredDbIds.has(db.id),
+      }));
+
+      return ResponseHelper.success(
+        databases,
+        'Notion Databases retrieved successfully',
+      );
+    } catch (error: any) {
+      // Pertahankan error handling yang sudah kita buat sebelumnya
+      if (error.response) {
+        if (error.response.status === 401) {
+          throw new HttpException(
+            'Token Notion tidak valid',
+            HttpStatus.UNAUTHORIZED,
+          );
+        }
+        throw new HttpException(
+          error.response.data.message || 'Gagal mengambil data dari Notion',
+          error.response.status,
+        );
+      }
+      throw new HttpException(
+        'Terjadi kesalahan server',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   async queryDbWithPinnedFilter(params: {
