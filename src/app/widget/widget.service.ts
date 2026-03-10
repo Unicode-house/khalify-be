@@ -1,6 +1,8 @@
 import {
   BadRequestException,
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Injectable,
   MethodNotAllowedException,
   NotFoundException,
@@ -264,23 +266,23 @@ export class WidgetService extends ResponseHelper {
       );
     }
   }
-async updateWidgetAvatar(dbID: string, profileId: string, imageUrl: string) {
-  // Pastikan pemilik widget yang mengupdate
-  const widget = await this.ps.client.widget.findUnique({
-    where: { dbID: dbID },
-  });
+  async updateWidgetAvatar(dbID: string, profileId: string, imageUrl: string) {
+    // Pastikan pemilik widget yang mengupdate
+    const widget = await this.ps.client.widget.findUnique({
+      where: { dbID: dbID },
+    });
 
-  if (!widget || widget.profileId !== profileId) {
-    throw new ForbiddenException('Akses ditolak atau widget tidak ditemukan');
+    if (!widget || widget.profileId !== profileId) {
+      throw new ForbiddenException('Akses ditolak atau widget tidak ditemukan');
+    }
+
+    return await this.ps.client.widget.update({
+      where: { dbID: dbID },
+      data: {
+        customAvatar: imageUrl,
+      },
+    });
   }
-
-  return await this.ps.client.widget.update({
-    where: { dbID: dbID },
-    data: {
-      customAvatar: imageUrl,
-    },
-  });
-}
   async getWidgetByEmail(token: string) {
     const payload = this.js.decode(token);
 
@@ -374,7 +376,7 @@ async updateWidgetAvatar(dbID: string, profileId: string, imageUrl: string) {
   }
   // CREATE
   async create(dto: CreateWidgetDto) {
-    // 1. Decode token (dto.email sepertinya berisi token JWT)
+    // 1. Decode token
     let decode;
     try {
       decode = await this.js.decode(dto.email);
@@ -386,44 +388,43 @@ async updateWidgetAvatar(dbID: string, profileId: string, imageUrl: string) {
       throw new BadRequestException('Invalid Token Payload');
     }
 
-    // 2. Cari User & VALIDASI DULU sebelum akses property-nya
+    // 2. Cari User
     const user = await this.ps.client.user.findFirst({
       where: { email: decode.email },
     });
 
     if (!user) {
-      throw new NotFoundException('User not found'); // Cegah Error 500
+      throw new NotFoundException('User not found');
     }
 
-    // 3. Cari Profile & VALIDASI DULU
+    // 3. Cari Profile
     const profile = await this.ps.client.profile.findFirst({
-      where: { userId: user.id }, // Aman diakses karena user sudah dicek
+      where: { userId: user.id },
     });
 
     if (!profile) {
-      throw new NotFoundException('Profile not found'); // Cegah Error 500
+      throw new NotFoundException('Profile not found');
     }
 
-    // 4. Cek Duplikat Widget (Baru aman panggil profile.id)
+    // 4. Cek Duplikat Widget di Database Lokal
     const existingWidget = await this.ps.client.widget.findFirst({
       where: { dbID: dto.dbID },
     });
 
     if (existingWidget) {
-      throw new MethodNotAllowedException(
-        `Widget dengan Database ID ${dto.dbID} sudah terdaftar di sistem.`,
+      // PERUBAHAN 1: Gunakan format object agar FE bisa baca 'code'-nya
+      throw new HttpException(
+        {
+          message: `Widget dengan Database ID ${dto.dbID} sudah terdaftar di sistem.`,
+          code: 'WIDGET_ALREADY_EXIST',
+        },
+        HttpStatus.METHOD_NOT_ALLOWED, // 405
       );
     }
 
-    // Ini penyebab Error 405 (Validasi Logic)
-    // if (widget) {
-    //   throw new MethodNotAllowedException(
-    //     'Widget for this database already exists',
-    //   );
-    // }
-
     const code = Math.floor(100000 + Math.random() * 900000).toString();
 
+    // 5. Simpan ke database lokal
     const data = await this.ps.client.widget.create({
       data: {
         token: dto.token,
@@ -433,22 +434,37 @@ async updateWidgetAvatar(dbID: string, profileId: string, imageUrl: string) {
         link: `https://widget.khlasify.com/embed/${code}?db=${dto.dbID}`,
       },
     });
+
+    // 6. Sinkronisasi dengan Server External (Vercel)
     try {
       const response = await axios.post(
         'https://khlasify-widget-be.vercel.app/widgets/create',
         data,
       );
-      // success logic
-    } catch (error) {
+    } catch (error: any) {
+      // PERUBAHAN 2: Hapus data lokal jika API external gagal (Rollback)
+      await this.ps.client.widget.delete({ where: { id: data.id } });
+
+      // PERUBAHAN 3: Lempar error (throw), bukan cuma di-console.log!
       if (axios.isAxiosError(error) && error.response?.status === 405) {
-        console.error(
-          'Database ini sudah terdaftar sebagai widget. Silakan pilih database lain.',
+        throw new HttpException(
+          {
+            message:
+              'Database ini sudah terdaftar sebagai widget di server sinkronisasi. Silakan pilih database lain.',
+            code: 'WIDGET_ALREADY_EXIST',
+          },
+          HttpStatus.METHOD_NOT_ALLOWED, // Mengirim 405 ke FE
         );
-      } else {
-        console.error('Terjadi kesalahan pada server.');
       }
+
+      // Jika error lain (misal 500 dari external API)
+      throw new HttpException(
+        'Terjadi kesalahan saat menghubungi server external.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
 
+    // 7. Jika sukses semua, kembalikan response 201
     return ResponseHelper.success(
       {
         user,
