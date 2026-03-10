@@ -157,4 +157,23 @@ export class WidgetController {
       'Avatar uploaded and saved successfully',
     );
   }
+
+  @Patch(':dbID/remove-avatar')
+  @UseGuards(JwtAuthGuard)
+  async removeAvatar(
+    @Param('dbID') dbID: string,
+    @Req() req: any,
+  ) {
+    const profileId = req.user.profileId; // Dari JWT
+
+    // Kita panggil service yang sudah ada, tapi set customAvatar menjadi null / string kosong
+    await this.widgetService.updateWidgetBranding(dbID, profileId, {
+      customAvatar: null, // Ubah menjadi '' (string kosong) jika skema Prisma-mu tidak mengizinkan null
+    } as any); // Gunakan 'as any' sementara jika DTO-mu menolak nilai null
+
+    return ResponseHelper.success(
+      null,
+      'Avatar berhasil dihapus',
+    );
+  }
 }
