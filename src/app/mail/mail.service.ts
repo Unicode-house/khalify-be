@@ -38,7 +38,8 @@ export class MailService extends ResponseHelper {
       const token = randomBytes(32).toString('hex');
 
       // Link Frontend (Pastikan env FRONTEND_URL sudah benar)
-      const link = `https://widget.khlasify.com/api/embed?token=${token}`;
+      const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      const link = `${baseUrl}/api/embed?token=${token}`;
 
       // 1️⃣ Save token to DB
       await this.ps.client.magicLink.create({

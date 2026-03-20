@@ -8,6 +8,7 @@ async function bootstrap() {
     'https://khalify-notion-widgets.vercel.app',
     'https://khlasify-notion-widget.vercel.app',
     'https://widget.khlasify.com',
+    'http://localhost:3000',
   ];  
 
   app.enableCors({

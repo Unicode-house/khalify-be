@@ -1,4 +1,5 @@
 import { PartialType } from '@nestjs/mapped-types';
+import { IsOptional, IsString } from 'class-validator';
 
 export class CreateWidgetDto {
   token: string;
@@ -18,10 +19,10 @@ export class CreateWidgetBulkDto {
 }
 
 export class UpdateBioWidgetDto {
-  name?: string;           // Nama Widget
-  customAvatar?: string;   // Atur Foto Profil
+  name?: string; // Nama Widget
+  customAvatar?: string; // Atur Foto Profil
   customUsername?: string; // Atur Username
-  customName?: string;     // Atur Display Name
-  customBio?: string;      // Atur Bio
-  customLink?: string;     // Atur Link
+  customName?: string; // Atur Display Name
+  customBio?: string; // Atur Bio
+  customLink?: string; // Atur Link
 }

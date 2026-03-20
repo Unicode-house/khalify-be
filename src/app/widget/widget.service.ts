@@ -448,7 +448,10 @@ export class WidgetService extends ResponseHelper {
 
     // 5. Buat Kode Unik & Simpan ke Database
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const embedLink = `https://widget.khlasify.com/embed/${code}?db=${dto.dbID}`;
+
+    // Ambil FRONTEND_URL dari .env (Opsi 2 yang kita bahas sebelumnya)
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const embedLink = `${frontendUrl}/embed/${code}?db=${dto.dbID}`;
 
     const data = await this.ps.client.widget.create({
       data: {
@@ -457,6 +460,7 @@ export class WidgetService extends ResponseHelper {
         name: dto.name,
         profileId: profile.id,
         link: embedLink,
+          
       },
     });
 

@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -12,47 +6,26 @@ datasource db {
   provider = "postgresql"
 }
 
-// enum
-
-enum PaymentStatus {
-  PENDING
-  PAID
-  FAILED
-  EXPIRED
-  CANCELED
-  REFUND
-}
-
-enum PaymentProvider {
-  MIDTRANS
-}
-
-// model
-
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  create_at DateTime @default(now())
-  singedIn  DateTime @updatedAt
-
-  // relation
-  profile Profile?
+  id        String    @id @default(uuid())
+  email     String    @unique
+  create_at DateTime  @default(now())
+  singedIn  DateTime  @updatedAt
   payments  Payment[]
+  profile   Profile?
 }
 
 model Payment {
-  id            String   @id @default(uuid())
-  token     String   @unique  // Ini token "magic"-nya
-  amount        Int
-  status        String   @default("PENDING") // PENDING, PAID, FAILED
-  provider      String   @default("MAYAR")
-  mayarId       String?  // ID dari Mayar (jika ada)
-  
-  userId        String
-  user          User     @relation(fields: [userId], references: [id])
-  
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id        String   @id @default(uuid())
+  amount    Int
+  status    String   @default("PENDING")
+  provider  String   @default("MAYAR")
+  mayarId   String?
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  token     String   @unique
+  user      User     @relation(fields: [userId], references: [id])
 }
 
 model MagicLink {
@@ -67,67 +40,68 @@ model highLight {
   id        String   @id @default(uuid())
   content   String
   createdAt DateTime @default(now())
-
-  // relation
   profileId String
-  profile   Profile @relation(fields: [profileId], references: [id])
+  profile   Profile  @relation(fields: [profileId], references: [id])
 }
 
 model Profile {
-  id        String   @id @default(uuid())
-  name      String
-  username  String   @unique
-  avatarUrl String?
-  bio       String?
-  create_at DateTime @default(now())
-  isPro Boolean @default(false)
-
-
-  // relation
+  id         String      @id @default(uuid())
+  name       String
+  username   String      @unique
+  avatarUrl  String?
+  bio        String?
+  create_at  DateTime    @default(now())
   userId     String      @unique
+  isPro      Boolean     @default(false)
+  orders     Order[]
   user       User        @relation(fields: [userId], references: [id])
   highLights highLight[]
   widgets    widget[]
-  orders     Order[]
 }
 
 model widget {
-  id         String   @id @default(uuid())
-  token      String
-  link       String?
-  name String?
-  dbID       String   @unique
-  create_at  DateTime @default(now())
-  
-  customName    String?
-  customAvatar  String?  // URL Foto Profil khusus widget ini
+  id             String   @id @default(uuid())
+  token          String
+  dbID           String   @unique
+  create_at      DateTime @default(now())
+  profileId      String
+  link           String?
+  name           String?
+  customAvatar   String?
+  customBio      String?
+  customLink     String?
+  customName     String?
   customUsername String?
-  customBio     String?
-  customLink    String?
 
-  // relation
-  profileId String
-  profile   Profile @relation(fields: [profileId], references: [id])
+  
+  profile        Profile  @relation(fields: [profileId], references: [id])
 }
 
 model Order {
-  id      String @id @default(uuid())
-  orderId String @unique @db.VarChar(50)
-  userId  String @db.Uuid
-
-  amount   Int // simpan dalam satuan terkecil (rupiah)
-  status   PaymentStatus   @default(PENDING)
-  provider PaymentProvider @default(MIDTRANS)
-
-  snapToken     String? @db.VarChar(255)
-  transactionId String? @db.VarChar(100)
-
+  id              String          @id @default(uuid())
+  orderId         String          @unique @db.VarChar(50)
+  userId          String          @db.Uuid
+  amount          Int
+  status          PaymentStatus   @default(PENDING)
+  provider        PaymentProvider @default(MIDTRANS)
+  snapToken       String?         @db.VarChar(255)
+  transactionId   String?         @db.VarChar(100)
   rawNotification Json?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  profileId       String
+  profile         Profile         @relation(fields: [profileId], references: [id])
+}
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  EXPIRED
+  CANCELED
+  REFUND
+}
 
-  // relation
-  profileId String
-  profile   Profile @relation(fields: [profileId], references: [id])
+enum PaymentProvider {
+  MIDTRANS
 }
