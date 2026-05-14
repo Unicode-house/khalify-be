@@ -1,15 +1,18 @@
 import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtModule } from '@nestjs/jwt';
-import { PrismaModule } from '../prisma/prisma.module';
 import { MailModule } from '../mail/mail.module';
 import { PassportModule } from '@nestjs/passport'; // [1] Import Passport
 import { JwtAccessTokenStrategy } from './jwtAccessToken.strategy'; // [2] Import Strategy
+import { User } from '../../database/entities/user.entity';
+import { MagicLink } from '../../database/entities/magic-link.entity';
+import { Profile } from '../../database/entities/profile.entity';
 
 @Module({
   imports: [
-    PrismaModule,
+    TypeOrmModule.forFeature([User, MagicLink, Profile]),
     MailModule,
     PassportModule, // [3] Masukkan PassportModule
     JwtModule.register({

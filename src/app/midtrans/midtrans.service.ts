@@ -1,9 +1,10 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import * as Midtrans from 'midtrans-client';
 import * as crypto from 'crypto';
-import { PrismaService } from '../prisma/prisma.service';
-import { PaymentStatus, PaymentProvider } from '@prisma/client';
+import { Order, PaymentStatus, PaymentProvider } from '../../database/entities/order.entity';
 
 @Injectable()
 export class MidtransService {
@@ -11,7 +12,8 @@ export class MidtransService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly ps: PrismaService,
+    @InjectRepository(Order)
+    private readonly orderRepo: Repository<Order>,
   ) {
     this.snap = new Midtrans.Snap({
       isProduction:
@@ -43,22 +45,22 @@ export class MidtransService {
       });
 
       // 2️⃣ Save order to DB (PENDING)
-      const order = await this.ps.client.order.create({
-        data: {
-          orderId,
-          userId,
-          profileId,
-          amount,
-          provider: PaymentProvider.MIDTRANS,
-          status: PaymentStatus.PENDING,
-          snapToken: transaction.token,
-        },
+      const order = this.orderRepo.create({
+        orderId,
+        userId,
+        profileId,
+        amount,
+        provider: PaymentProvider.MIDTRANS,
+        status: PaymentStatus.PENDING,
+        snapToken: transaction.token,
       });
+
+      const savedOrder = await this.orderRepo.save(order);
 
       return {
         snapToken: transaction.token,
         redirectUrl: transaction.redirect_url,
-        order,
+        order: savedOrder,
       };
     } catch (error) {
       console.error('Midtrans Error:', error?.ApiResponse || error?.message);
@@ -96,7 +98,7 @@ export class MidtransService {
     }
 
     // Update order
-    const order = await this.ps.client.order.findUnique({
+    const order = await this.orderRepo.findOne({
       where: { orderId: notification.order_id },
     });
 
@@ -128,15 +130,15 @@ export class MidtransService {
         break;
     }
 
-    await this.ps.client.order.update({
-      where: { orderId: notification.order_id },
-      data: {
+    await this.orderRepo.update(
+      { orderId: notification.order_id },
+      {
         status,
         transactionId: notification.transaction_id,
         rawNotification: notification,
         updatedAt: new Date(),
       },
-    });
+    );
 
     console.log(`✅ Order ${order.orderId} updated to ${status}`);
 

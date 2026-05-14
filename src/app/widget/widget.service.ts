@@ -7,13 +7,17 @@ import {
   MethodNotAllowedException,
   NotFoundException,
 } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { In, Repository } from 'typeorm';
 import {
   CreateWidgetBulkDto,
   CreateWidgetDto,
   UpdateWidgetDto,
   UpdateBioWidgetDto,
 } from './widget.dto';
-import { PrismaService } from '../prisma/prisma.service';
+import { Widget } from '../../database/entities/widget.entity';
+import { User } from '../../database/entities/user.entity';
+import { Profile } from '../../database/entities/profile.entity';
 import { ResponseHelper } from '../../helper/base.response';
 import { HttpService } from '@nestjs/axios';
 import axios from 'axios';
@@ -31,7 +35,12 @@ interface QueryDbPinnedParams {
 @Injectable()
 export class WidgetService extends ResponseHelper {
   constructor(
-    private readonly ps: PrismaService,
+    @InjectRepository(Widget)
+    private readonly widgetRepo: Repository<Widget>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
+    @InjectRepository(Profile)
+    private readonly profileRepo: Repository<Profile>,
     private readonly http: HttpService,
     private readonly js: JwtService,
   ) {
@@ -40,8 +49,8 @@ export class WidgetService extends ResponseHelper {
 
   // GET ALL
   async getAll() {
-    const data = await this.ps.client.widget.findMany({
-      orderBy: { create_at: 'desc' },
+    const data = await this.widgetRepo.find({
+      order: { create_at: 'DESC' },
     });
 
     return ResponseHelper.success(data, 'Widgets retrieved successfully');
@@ -70,9 +79,8 @@ export class WidgetService extends ResponseHelper {
       );
 
       // 2. Ambil semua ID widget yang sudah ada di database lokal kamu
-      // Kita gunakan 'select' agar Prisma hanya menarik kolom dbID saja (lebih ringan)
-      const existingWidgets = await this.ps.client.widget.findMany({
-        select: { dbID: true },
+      const existingWidgets = await this.widgetRepo.find({
+        select: ['dbID'],
       });
 
       // 3. Ubah ke bentuk Set agar proses pencocokan jauh lebih cepat (O(1) lookup)
@@ -249,11 +257,9 @@ export class WidgetService extends ResponseHelper {
         );
       }
 
-      const widget = await this.ps.client.widget.findUnique({
+      const widget = await this.widgetRepo.findOne({
         where: { dbID: id },
-        include: {
-          profile: true,
-        },
+        relations: ['profile'],
       });
 
       if (!widget) {
@@ -299,7 +305,7 @@ export class WidgetService extends ResponseHelper {
   }
   async updateWidgetAvatar(dbID: string, profileId: string, imageUrl: string) {
     // Pastikan pemilik widget yang mengupdate
-    const widget = await this.ps.client.widget.findUnique({
+    const widget = await this.widgetRepo.findOne({
       where: { dbID: dbID },
     });
 
@@ -307,25 +313,25 @@ export class WidgetService extends ResponseHelper {
       throw new ForbiddenException('Akses ditolak atau widget tidak ditemukan');
     }
 
-    return await this.ps.client.widget.update({
-      where: { dbID: dbID },
-      data: {
-        customAvatar: imageUrl,
-      },
-    });
+    await this.widgetRepo.update(
+      { dbID: dbID },
+      { customAvatar: imageUrl },
+    );
+
+    return await this.widgetRepo.findOne({ where: { dbID: dbID } });
   }
   async getWidgetByEmail(token: string) {
     const payload = this.js.decode(token);
 
-    const user = await this.ps.client.user.findFirst({
-      where: { email: payload.email },
+    const user = await this.userRepo.findOne({
+      where: { email: (payload as any).email },
     });
 
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
-    const profile = await this.ps.client.profile.findFirst({
+    const profile = await this.profileRepo.findOne({
       where: { userId: user.id },
     });
 
@@ -333,7 +339,7 @@ export class WidgetService extends ResponseHelper {
       throw new NotFoundException('Profile not found');
     }
 
-    const widgets = await this.ps.client.widget.findMany({
+    const widgets = await this.widgetRepo.find({
       where: { profileId: profile.id },
     });
 
@@ -348,15 +354,9 @@ export class WidgetService extends ResponseHelper {
     try {
       console.log(`[GET_EMBED] Memanggil data untuk dbID: ${dbID}`);
 
-      const widget = await this.ps.client.widget.findUnique({
+      const widget = await this.widgetRepo.findOne({
         where: { dbID: dbID },
-        include: {
-          profile: {
-            select: {
-              isPro: true,
-            },
-          },
-        },
+        relations: ['profile'],
       });
 
       if (!widget) {
@@ -420,19 +420,19 @@ export class WidgetService extends ResponseHelper {
     }
 
     // 2. Cari User
-    const user = await this.ps.client.user.findFirst({
+    const user = await this.userRepo.findOne({
       where: { email: decode.email },
     });
     if (!user) throw new NotFoundException('User not found');
 
     // 3. Cari Profile
-    const profile = await this.ps.client.profile.findFirst({
+    const profile = await this.profileRepo.findOne({
       where: { userId: user.id },
     });
     if (!profile) throw new NotFoundException('Profile not found');
 
     // 4. Cek Duplikat Widget
-    const existingWidget = await this.ps.client.widget.findFirst({
+    const existingWidget = await this.widgetRepo.findOne({
       where: { dbID: dto.dbID },
     });
 
@@ -453,16 +453,15 @@ export class WidgetService extends ResponseHelper {
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     const embedLink = `${frontendUrl}/embed/${code}?db=${dto.dbID}`;
 
-    const data = await this.ps.client.widget.create({
-      data: {
-        token: dto.token,
-        dbID: dto.dbID,
-        name: dto.name,
-        profileId: profile.id,
-        link: embedLink,
-          
-      },
+    const newWidget = this.widgetRepo.create({
+      token: dto.token,
+      dbID: dto.dbID,
+      name: dto.name,
+      profileId: profile.id,
+      link: embedLink,
     });
+
+    const data = await this.widgetRepo.save(newWidget);
 
     // 6. LANGSUNG RETURN SUKSES (TIDAK PERLU AXIOS LAGI!)
     return ResponseHelper.success(
@@ -483,9 +482,9 @@ export class WidgetService extends ResponseHelper {
     dto: UpdateBioWidgetDto,
   ) {
     // 1. Cari widget & cek status Pro pemiliknya
-    const widget = await this.ps.client.widget.findUnique({
+    const widget = await this.widgetRepo.findOne({
       where: { id: widgetId },
-      include: { profile: true },
+      relations: ['profile'],
     });
 
     if (!widget) throw new NotFoundException('Widget tidak ditemukan');
@@ -501,9 +500,9 @@ export class WidgetService extends ResponseHelper {
     }
 
     // 3. Update data widget
-    const updatedWidget = await this.ps.client.widget.update({
-      where: { id: widgetId },
-      data: {
+    await this.widgetRepo.update(
+      { id: widgetId },
+      {
         name: dto.name,
         customAvatar: dto.customAvatar,
         customUsername: dto.customUsername,
@@ -511,15 +510,17 @@ export class WidgetService extends ResponseHelper {
         customBio: dto.customBio,
         customLink: dto.customLink,
       },
-    });
+    );
+
+    const updatedWidget = await this.widgetRepo.findOne({ where: { id: widgetId } });
 
     return ResponseHelper.success(updatedWidget, 'Widget branding updated!');
   }
   async removeWidgetAvatar(widgetId: string, profileId: string) {
-    // 1. Ambil data SECUKUPNYA saja (hanya customAvatar dan profileId untuk keamanan)
-    const widget = await this.ps.client.widget.findUnique({
+    // 1. Ambil data SECUKUPNYA saja
+    const widget = await this.widgetRepo.findOne({
       where: { id: widgetId },
-      select: { profileId: true, customAvatar: true },
+      select: ['id', 'profileId', 'customAvatar'],
     });
 
     if (!widget) throw new NotFoundException('Widget tidak ditemukan');
@@ -535,25 +536,25 @@ export class WidgetService extends ResponseHelper {
     }
 
     // 3. Jika ada isinya, baru lakukan query UPDATE
-    await this.ps.client.widget.update({
-      where: { id: widgetId },
-      data: { customAvatar: null },
-    });
+    await this.widgetRepo.update(
+      { id: widgetId },
+      { customAvatar: null },
+    );
 
     return ResponseHelper.success(null, 'Avatar berhasil dihapus');
   }
   async createBulk(dto: CreateWidgetBulkDto) {
     const decode = await this.js.decode(dto.email);
 
-    const user = await this.ps.client.user.findFirst({
-      where: { email: decode.email },
+    const user = await this.userRepo.findOne({
+      where: { email: (decode as any).email },
     });
 
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
-    const profile = await this.ps.client.profile.findFirst({
+    const profile = await this.profileRepo.findOne({
       where: { userId: user.id },
     });
 
@@ -562,12 +563,12 @@ export class WidgetService extends ResponseHelper {
     }
 
     // ambil widget yang sudah ada
-    const existingWidgets = await this.ps.client.widget.findMany({
+    const existingWidgets = await this.widgetRepo.find({
       where: {
         profileId: profile.id,
-        dbID: { in: dto.dbIDs },
+        dbID: In(dto.dbIDs),
       },
-      select: { dbID: true },
+      select: ['dbID'],
     });
 
     const existingDbIDs = new Set(existingWidgets.map((w) => w.dbID));
@@ -575,7 +576,7 @@ export class WidgetService extends ResponseHelper {
     // filter yang belum ada
     const widgetsToCreate = dto.dbIDs
       .filter((dbID) => !existingDbIDs.has(dbID))
-      .map((dbID) => ({
+      .map((dbID) => this.widgetRepo.create({
         token: dto.token,
         dbID,
         profileId: profile.id,
@@ -588,15 +589,13 @@ export class WidgetService extends ResponseHelper {
     }
 
     // bulk insert
-    await this.ps.client.widget.createMany({
-      data: widgetsToCreate,
-    });
+    await this.widgetRepo.save(widgetsToCreate);
 
     // ambil data yang baru dibuat
-    const widgets = await this.ps.client.widget.findMany({
+    const widgets = await this.widgetRepo.find({
       where: {
         profileId: profile.id,
-        dbID: { in: widgetsToCreate.map((w) => w.dbID) },
+        dbID: In(widgetsToCreate.map((w) => w.dbID)),
       },
     });
 
@@ -617,19 +616,9 @@ export class WidgetService extends ResponseHelper {
     );
   }
 
-  // CREATE BULK
-  // async createBulk(data: CreateWidgetDto[]) {
-  //   const result = await this.ps.client.widget.createMany({
-  //     data,
-  //     skipDuplicates: true,
-  //   });
-
-  //   return ResponseHelper.success(result, 'Widgets created successfully', 201);
-  // }
-
   // UPDATE
   async update(id: string, dto: UpdateWidgetDto) {
-    const exists = await this.ps.client.widget.findUnique({
+    const exists = await this.widgetRepo.findOne({
       where: { id },
     });
 
@@ -641,17 +630,15 @@ export class WidgetService extends ResponseHelper {
       );
     }
 
-    const data = await this.ps.client.widget.update({
-      where: { id },
-      data: dto,
-    });
+    await this.widgetRepo.update({ id }, dto);
+    const data = await this.widgetRepo.findOne({ where: { id } });
 
     return ResponseHelper.success(data, 'Widget updated successfully');
   }
 
   // DELETE
   async delete(id: string) {
-    const exists = await this.ps.client.widget.findFirst({
+    const exists = await this.widgetRepo.findOne({
       where: { id },
     });
 
@@ -663,10 +650,8 @@ export class WidgetService extends ResponseHelper {
       );
     }
 
-    const data = await this.ps.client.widget.delete({
-      where: { id },
-    });
+    await this.widgetRepo.remove(exists);
 
-    return ResponseHelper.success(data, 'Widget deleted successfully');
+    return ResponseHelper.success(exists, 'Widget deleted successfully');
   }
 }

@@ -1,12 +1,13 @@
-import { MagicLink } from './../../../node_modules/.prisma/client/index.d';
 import {
   HttpException,
   Injectable,
   InternalServerErrorException,
 } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { randomBytes } from 'crypto';
 import * as nodemailer from 'nodemailer';
-import { PrismaService } from '../prisma/prisma.service';
+import { MagicLink } from '../../database/entities/magic-link.entity';
 import { ResponseHelper } from '../../helper/base.response';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -16,7 +17,8 @@ export class MailService extends ResponseHelper {
   private transporter: nodemailer.Transporter;
 
   constructor(
-    private readonly ps: PrismaService,
+    @InjectRepository(MagicLink)
+    private readonly magicLinkRepo: Repository<MagicLink>,
     private readonly js: JwtService,
     private readonly configService: ConfigService,
   ) {
@@ -42,12 +44,11 @@ export class MailService extends ResponseHelper {
       const link = `${baseUrl}/api/embed?token=${token}`;
 
       // 1️⃣ Save token to DB
-      await this.ps.client.magicLink.create({
-        data: {
-          email: normalizedEmail,
-          token,
-        },
+      const magicLink = this.magicLinkRepo.create({
+        email: normalizedEmail,
+        token,
       });
+      await this.magicLinkRepo.save(magicLink);
 
       // 2️⃣ Send Email Professional HTML
       await this.transporter.sendMail({
@@ -81,7 +82,7 @@ export class MailService extends ResponseHelper {
       <h2 style="color: #111827; font-size: 22px; font-weight: 700; margin-top: 0; margin-bottom: 16px; text-align: center;">Login to khlasify</h2>
       
       <p style="color: #4b5563; font-size: 16px; line-height: 26px; margin-bottom: 32px; text-align: center;">
-        Click the button below to access your \nContent Preview Widget
+        Click the button below to access your \\nContent Preview Widget
       </p>
 
       <div style="text-align: center; margin-bottom: 32px;">

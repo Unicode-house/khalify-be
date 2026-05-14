@@ -1,14 +1,19 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Order } from '../../database/entities/order.entity';
 
 @Injectable()
 export class OrderService {
 
-    constructor(private readonly ps:PrismaService) {}
+    constructor(
+      @InjectRepository(Order)
+      private readonly orderRepo: Repository<Order>,
+    ) {}
 
 
     async getOrder() { 
-        const order = await this.ps.client.order.findMany();
+        const order = await this.orderRepo.find();
         return {
             data:order
         }

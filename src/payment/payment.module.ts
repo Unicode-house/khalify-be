@@ -1,13 +1,15 @@
 import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { PaymentService } from './payment.service';
 import { PaymentController } from './payment.controller';
-import { AuthModule } from '../app/auth/auth.module'; // [1] Import AuthModule
-import { PrismaModule } from '../app/prisma/prisma.module'; // [2] Import PrismaModule
+import { AuthModule } from '../app/auth/auth.module';
+import { User } from '../database/entities/user.entity';
+import { Profile } from '../database/entities/profile.entity';
 
 @Module({
   imports: [
-    AuthModule,   // [3] Agar Guard 'jwt_access_token' dikenali
-    PrismaModule  // [4] Agar PaymentService bisa akses DB
+    AuthModule,
+    TypeOrmModule.forFeature([User, Profile]),
   ],
   controllers: [PaymentController],
   providers: [PaymentService],

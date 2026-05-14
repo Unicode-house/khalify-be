@@ -1,14 +1,19 @@
 import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
-import { PrismaService } from '../prisma/prisma.service';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { User } from '../../database/entities/user.entity';
 import { jwt_config } from '../../config/jwt.config'; // <--- 1. Tambahkan Import ini
 
 @Injectable()
 export class JwtAccessTokenStrategy extends PassportStrategy(Strategy, 'jwt_access_token') {
   private readonly logger = new Logger(JwtAccessTokenStrategy.name);
 
-  constructor(private readonly prisma: PrismaService) {
+  constructor(
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
+  ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
@@ -23,14 +28,14 @@ export class JwtAccessTokenStrategy extends PassportStrategy(Strategy, 'jwt_acce
     console.log('🔍 [DEBUG STRATEGY] Payload received:', JSON.stringify(payload));
 
     if (payload.sub && payload.sub !== 'magic-link') {
-      const user = await this.prisma.client.user.findUnique({
+      const user = await this.userRepo.findOne({
         where: { id: payload.sub },
       });
       if (user) return user;
     }
 
     if (payload.email) {
-      const user = await this.prisma.client.user.findUnique({
+      const user = await this.userRepo.findOne({
         where: { email: payload.email },
       });
       if (user) {

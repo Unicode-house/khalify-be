@@ -1,37 +1,37 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { CreateProfileDto } from './dto/create-profile.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
-import { PrismaService } from '../../prisma/prisma.service';
+import { Profile } from '../../../database/entities/profile.entity';
 import { ResponseHelper } from 'src/helper/base.response';
 
 @Injectable()
 export class ProfileService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    @InjectRepository(Profile)
+    private readonly profileRepo: Repository<Profile>,
+  ) {}
 
   async create(dto: CreateProfileDto) {
-    return this.prisma.client.profile.create({
-      data: {
-        name: dto.name,
-        username: dto.username,
-        avatarUrl: dto.avatarUrl,
-        bio: dto.bio,
-        user: {
-          connect: { id: dto.userId },
-        },
-      },
+    const profile = this.profileRepo.create({
+      name: dto.name,
+      username: dto.username,
+      avatarUrl: dto.avatarUrl,
+      bio: dto.bio,
+      userId: dto.userId,
     });
+    return this.profileRepo.save(profile);
   }
 
   async findAll() {
-    return this.prisma.client.profile.findMany({
-      include: {
-        user: true,
-      },
+    return this.profileRepo.find({
+      relations: ['user'],
     });
   }
 
   async findOne(id: string) {
-    const profile = await this.prisma.client.profile.findUnique({
+    const profile = await this.profileRepo.findOne({
       where: { id },
     });
 
@@ -42,29 +42,20 @@ export class ProfileService {
   async update(id: string, dto: UpdateProfileDto) {
     await this.findOne(id); // validasi exist
 
-    return this.prisma.client.profile.update({
-      where: { id },
-      data: dto,
-    });
+    await this.profileRepo.update({ id }, dto);
+    return this.profileRepo.findOne({ where: { id } });
   }
 
   // Logika baru untuk mengupdate status isPro di database
   async updateProStatus(id: string, status: boolean) {
     await this.findOne(id); // Memastikan profil ditemukan sebelum update
 
-    return this.prisma.client.profile.update({
-      where: { id },
-      data: {
-        isPro: status,
-      },
-    });
+    await this.profileRepo.update({ id }, { isPro: status });
+    return this.profileRepo.findOne({ where: { id } });
   }
 
   async remove(id: string) {
-    await this.findOne(id);
-
-    return this.prisma.client.profile.delete({
-      where: { id },
-    });
+    const profile = await this.findOne(id);
+    return this.profileRepo.remove(profile);
   }
 }

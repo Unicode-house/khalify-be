@@ -1,231 +1,116 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '../app/prisma/prisma.service'; 
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { User } from '../database/entities/user.entity';
+import { Profile } from '../database/entities/profile.entity';
 import axios from 'axios';
 
 @Injectable()
 export class PaymentService {
   private readonly logger = new Logger(PaymentService.name);
-  private readonly notionDbId = process.env.NOTION_DB_ID; 
+  private readonly notionDbId = process.env.NOTION_DB_ID;
   private readonly notionSecret = process.env.NOTION_SECRET;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
+    @InjectRepository(Profile)
+    private readonly profileRepo: Repository<Profile>,
+  ) {}
 
-  // 1. Generate Link Mayar
   async getUpgradeLink(userEmail: string, userName: string) {
-    this.logger.log(`[GetLink] Request upgrade link for: ${userEmail}`);
-
     const baseUrl = 'https://khlasify.myr.id/pl/content-pro/';
-    const params = new URLSearchParams({
-      email: userEmail,
-      name: userName || userEmail.split('@')[0], 
-    });
-
-    const finalLink = `${baseUrl}?${params.toString()}`;
-    return { paymentLink: finalLink };
+    const params = new URLSearchParams({ email: userEmail, name: userName || userEmail.split('@')[0] });
+    return { paymentLink: `${baseUrl}?${params.toString()}` };
   }
 
-  // 2. Logic Utama
   async checkAndSyncStatus(userId: string | undefined, userEmail: string) {
-    this.logger.log(`[SyncStatus] Check request for Email: ${userEmail} (UserID input: ${userId})`);
-
     let targetUserId = userId;
 
-    // [FIX 1] Gunakan .client saat akses DB
-    // Jika userId kosong (Magic Link), cari User ID berdasarkan Email
     if (!targetUserId) {
-      this.logger.log(`[SyncStatus] UserID missing. Finding user by email...`);
       try {
-        // PERBAIKAN: this.prisma.client.user
-        const user = await this.prisma.client.user.findUnique({
-          where: { email: userEmail },
-        });
-
-        if (!user) {
-          this.logger.error(`[SyncStatus] Critical: User with email ${userEmail} not found in DB.`);
-          return { isPro: false, status: 'user_not_found_in_db' };
-        }
+        const user = await this.userRepo.findOne({ where: { email: userEmail } });
+        if (!user) return { isPro: false, status: 'user_not_found_in_db' };
         targetUserId = user.id;
-        this.logger.log(`[SyncStatus] User found via email. ID: ${targetUserId}`);
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        this.logger.error(`[SyncStatus] DB Error finding user: ${msg}`);
         return { isPro: false, status: 'db_error' };
       }
     }
 
-    // A. Cek Cache Lokal di tabel PROFILE
     try {
-      // PERBAIKAN: this.prisma.client.profile
-      const profile = await this.prisma.client.profile.findUnique({
-        where: { userId: targetUserId },
-        select: { isPro: true, id: true } 
-      });
-
-      if (profile?.isPro) {
-        this.logger.log(`[SyncStatus] User is already PRO (Local Cache).`);
-        return { isPro: true, status: 'already_pro' };
-      }
-      
-      this.logger.log(`[SyncStatus] User is FREE locally. Checking Notion...`);
-
+      const profile = await this.profileRepo.findOne({ where: { userId: targetUserId }, select: ['isPro', 'id'] });
+      if (profile?.isPro) return { isPro: true, status: 'already_pro' };
     } catch (error) {
-       const msg = error instanceof Error ? error.message : String(error);
-       this.logger.warn(`[SyncStatus] Local DB Check Warning: ${msg}`);
+      this.logger.warn(`[SyncStatus] Local DB Check Warning`);
     }
 
-    // B. Hit API Notion
     const isPaidInNotion = await this.checkNotionTransaction(userEmail);
 
     if (isPaidInNotion) {
-      this.logger.log(`[SyncStatus] PAID found in Notion! Syncing to local DB...`);
-
-      // C. Sinkronisasi (UPSERT)
       try {
-        // PERBAIKAN: this.prisma.client.profile
-        await this.prisma.client.profile.upsert({
-          where: { userId: targetUserId },
-          update: { isPro: true },
-          create: {
-            userId: targetUserId!,
-            name: userEmail.split('@')[0],
-            username: userEmail.split('@')[0] + Math.floor(Math.random() * 9999),
-            isPro: true
-          }
-        });
-        
-        this.logger.log(`[SyncStatus] SUCCESS! User ${userEmail} synced to PRO.`);
+        let profile = await this.profileRepo.findOne({ where: { userId: targetUserId } });
+        if (profile) {
+          await this.profileRepo.update({ userId: targetUserId }, { isPro: true });
+        } else {
+          profile = this.profileRepo.create({
+            userId: targetUserId!, name: userEmail.split('@')[0],
+            username: userEmail.split('@')[0] + Math.floor(Math.random() * 9999), isPro: true,
+          });
+          await this.profileRepo.save(profile);
+        }
         return { isPro: true, status: 'synced_now' };
-
       } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
-        this.logger.error(`[SyncStatus] Failed to update Local DB: ${msg}`);
-        return { isPro: true, status: 'synced_but_update_failed' }; 
+        return { isPro: true, status: 'synced_but_update_failed' };
       }
     }
 
-    this.logger.log(`[SyncStatus] No PAID transaction found in Notion for ${userEmail}.`);
     return { isPro: false, status: 'waiting_payment' };
   }
 
-  // --- PRIVATE HELPER ---
   private async checkNotionTransaction(email: string): Promise<boolean> {
-    if (!this.notionDbId || !this.notionSecret) {
-      this.logger.error(`[NotionAPI] Missing Env Config!`);
-      return false;
-    }
-
+    if (!this.notionDbId || !this.notionSecret) return false;
     try {
       const response = await axios.post(
         `https://api.notion.com/v1/databases/${this.notionDbId}/query`,
-        {
-          filter: {
-            and: [
-              { property: 'Email', email: { equals: email } }, // Sesuaikan huruf besar/kecil key ini dengan DB Notion
-              { property: 'Status', rich_text: { equals: 'SUCCES' } },
-              { property: 'Variant', rich_text: { contains: 'Content OS + Preview Widget (PRO)' } }
-            ],
-          },
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${this.notionSecret}`,
-            'Notion-Version': '2022-06-28',
-            'Content-Type': 'application/json',
-          },
-        }
+        { filter: { and: [
+          { property: 'Email', email: { equals: email } },
+          { property: 'Status', rich_text: { equals: 'SUCCES' } },
+          { property: 'Variant', rich_text: { contains: 'Content OS + Preview Widget (PRO)' } }
+        ]}},
+        { headers: { Authorization: `Bearer ${this.notionSecret}`, 'Notion-Version': '2022-06-28', 'Content-Type': 'application/json' }}
       );
-
       return response.data.results.length > 0;
-
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        this.logger.error(`[NotionAPI] Axios Error: ${error.response?.status} - ${JSON.stringify(error.response?.data)}`);
-      } else {
-        const msg = error instanceof Error ? error.message : String(error);
-        this.logger.error(`[NotionAPI] Unknown Error: ${msg}`);
-      }
-      return false; 
+      return false;
     }
   }
+
   async syncProStatus(userEmail: string) {
-    // Pastikan ID dan Token benar
     const NOTION_TRANS_DB_ID = "2fb1519e69f080b8a586f0f8cbab4653";
-    const NOTION_TOKEN = "ntn_G56643036008mwChhk9IMXuw5kbkgNMZDyzXbXnnFElcKu"; 
+    const NOTION_TOKEN = "ntn_G56643036008mwChhk9IMXuw5kbkgNMZDyzXbXnnFElcKu";
 
     try {
       const response = await axios.post(
         `https://api.notion.com/v1/databases/${NOTION_TRANS_DB_ID}/query`,
-        {
-          filter: {
-            and: [
-              {
-                // 1. Cek Nama Property: Biasanya 'Email' (Huruf Besar Awal)
-                property: 'Email', 
-                
-                // 2. Cek Tipe Property:
-                // Jika Icon Amplop ✉️ -> Pakai 'email'
-                // Jika Icon Huruf 'A' -> Pakai 'rich_text'
-                // Default Make.com biasanya 'email' atau 'rich_text'. 
-                // Kita coba 'email' dulu sesuai icon standar.
-                email: { 
-                  equals: userEmail,
-                },
-              },
-              {
-                // 3. Cek Nama Property: Biasanya 'Status' (Huruf Besar Awal)
-                property: 'Status', 
-                
-                // 4. PERBAIKAN UTAMA DISINI (Berdasarkan Error Log 400)
-                // Error bilang DB-nya Text, tapi Anda filter pakai Select.
-                // Jadi kita ganti ke 'rich_text'.
-                rich_text: { 
-                  equals: 'Success', 
-                },
-              },
-            ],
-          },
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${NOTION_TOKEN}`,
-            'Notion-Version': '2022-06-28',
-            'Content-Type': 'application/json',
-          },
-        }
+        { filter: { and: [
+          { property: 'Email', email: { equals: userEmail } },
+          { property: 'Status', rich_text: { equals: 'Success' } },
+        ]}},
+        { headers: { Authorization: `Bearer ${NOTION_TOKEN}`, 'Notion-Version': '2022-06-28', 'Content-Type': 'application/json' }}
       );
 
       const transactions = response.data.results;
-
-      // Logika Penentuan
       if (transactions.length > 0) {
-        // Cari User ID lokal
-        const user = await this.prisma.client.user.findFirst({
-          where: { email: userEmail },
-        });
-
+        const user = await this.userRepo.findOne({ where: { email: userEmail } });
         if (user) {
-          // Update DB Lokal jadi PRO
-          await this.prisma.client.profile.update({
-            where: { userId: user.id },
-            data: { isPro: true },
-          });
-          
+          await this.profileRepo.update({ userId: user.id }, { isPro: true });
           return { isPro: true, message: 'Status synced: PRO Active' };
         } else {
-             // User belum terdaftar di aplikasi tapi sudah bayar
-             return { isPro: false, message: 'User not found in App' };
+          return { isPro: false, message: 'User not found in App' };
         }
       }
-
       return { isPro: false, message: 'No successful transaction found' };
-
     } catch (error) {
-      // Logging Error
-      if (axios.isAxiosError(error)) {
-        console.error('🔴 NOTION ERROR BODY:', JSON.stringify(error.response?.data, null, 2));
-      } else {
-        console.error('🔴 UNKNOWN ERROR:', error);
-      }
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to sync: ${errorMessage}`);
     }
