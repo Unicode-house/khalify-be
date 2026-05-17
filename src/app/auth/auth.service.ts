@@ -9,7 +9,7 @@ import { ResponseHelper } from '../../helper/base.response';
 import { JwtService } from '@nestjs/jwt';
 
 @Injectable()
-export class AuthService extends ResponseHelper {
+export class AuthService {
   constructor(
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
@@ -19,9 +19,7 @@ export class AuthService extends ResponseHelper {
     private readonly profileRepo: Repository<Profile>,
     private readonly mailService: MailService,
     private js: JwtService,
-  ) {
-    super();
-  }
+  ) {}
 
 
 
@@ -47,7 +45,7 @@ export class AuthService extends ResponseHelper {
         email,
         token: res.token,
       },
-      'magic link sent successfully',
+      'Magic link sent successfully',
     );
   }
 
@@ -57,7 +55,12 @@ export class AuthService extends ResponseHelper {
     });
 
     if (!magicLink) {
-      return ResponseHelper.error('Invalid or expired magic link', 400, 'INVALID_MAGIC_LINK');
+      return ResponseHelper.error(
+        'Invalid or expired magic link',
+        400,
+        'INVALID_MAGIC_LINK',
+        { details: 'The provided token is either invalid or has already expired. Please request a new magic link.' },
+      );
     }
 
     await this.magicLinkRepo.update(

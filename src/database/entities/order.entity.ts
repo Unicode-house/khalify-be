@@ -22,7 +22,7 @@ export enum PaymentProvider {
   MIDTRANS = 'MIDTRANS',
 }
 
-@Entity('orders')
+@Entity('Order')
 export class Order {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -30,7 +30,7 @@ export class Order {
   @Column({ unique: true, length: 50, name: 'order_id' })
   orderId: string;
 
-  @Column({ name: 'user_id' })
+  @Column({ type: 'char', length: 36, name: 'user_id' })
   userId: string;
 
   @Column()
@@ -65,7 +65,7 @@ export class Order {
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 
-  @Column({ name: 'profile_id' })
+  @Column({ type: 'char', length: 36, name: 'profile_id' })
   profileId: string;
 
   @ManyToOne(() => Profile, (profile) => profile.orders)

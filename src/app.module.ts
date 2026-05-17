@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { DatabaseModule } from './database/database.module';
@@ -13,6 +13,8 @@ import { MailModule } from './app/mail/mail.module';
 import { mailConfig } from './config/mailer.config';
 import { HttpModule } from '@nestjs/axios';
 import { PaymentModule } from './payment/payment.module';
+import { UserModule } from './app/user/user.module';
+import { RequestIdMiddleware } from './middleware/request-id.middleware';
 
 @Module({
   imports: [
@@ -30,8 +32,14 @@ import { PaymentModule } from './payment/payment.module';
     MailModule,
     HttpModule,
     PaymentModule,
+    UserModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    // Apply Request ID middleware to ALL routes
+    consumer.apply(RequestIdMiddleware).forRoutes('*');
+  }
+}

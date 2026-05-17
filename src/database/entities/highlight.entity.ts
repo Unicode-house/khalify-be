@@ -8,7 +8,7 @@ import {
 } from 'typeorm';
 import { Profile } from './profile.entity';
 
-@Entity('highlights')
+@Entity('Highlight')
 export class HighLight {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -19,7 +19,7 @@ export class HighLight {
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  @Column({ name: 'profile_id' })
+  @Column({ type: 'char', length: 36, name: 'profile_id' })
   profileId: string;
 
   @ManyToOne(() => Profile, (profile) => profile.highLights)

@@ -8,7 +8,7 @@ import {
 } from 'typeorm';
 import { Profile } from './profile.entity';
 
-@Entity('widgets')
+@Entity('Widget')
 export class Widget {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -22,7 +22,7 @@ export class Widget {
   @CreateDateColumn({ name: 'created_at' })
   create_at: Date;
 
-  @Column({ name: 'profile_id' })
+  @Column({ type: 'char', length: 36, name: 'profile_id' })
   profileId: string;
 
   @Column({ nullable: true })

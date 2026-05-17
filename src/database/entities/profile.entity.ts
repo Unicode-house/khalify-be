@@ -12,7 +12,7 @@ import { HighLight } from './highlight.entity';
 import { Widget } from './widget.entity';
 import { Order } from './order.entity';
 
-@Entity('profiles')
+@Entity('Profile')
 export class Profile {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -32,7 +32,7 @@ export class Profile {
   @CreateDateColumn({ name: 'created_at' })
   create_at: Date;
 
-  @Column({ unique: true, name: 'user_id' })
+  @Column({ type: 'char', length: 36, unique: true, name: 'user_id' })
   userId: string;
 
   @Column({ default: false, name: 'is_pro' })

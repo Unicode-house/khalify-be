@@ -13,7 +13,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 
 @Injectable()
-export class MailService extends ResponseHelper {
+export class MailService {
   private transporter: nodemailer.Transporter;
 
   constructor(
@@ -22,7 +22,6 @@ export class MailService extends ResponseHelper {
     private readonly js: JwtService,
     private readonly configService: ConfigService,
   ) {
-    super();
     this.transporter = nodemailer.createTransport({
       ...this.configService.get('mail'),
       connectionTimeout: 5000,

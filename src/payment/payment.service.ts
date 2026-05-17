@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../database/entities/user.entity';
 import { Profile } from '../database/entities/profile.entity';
+import { ResponseHelper } from '../helper/base.response';
 import axios from 'axios';
 
 @Injectable()
@@ -21,7 +22,10 @@ export class PaymentService {
   async getUpgradeLink(userEmail: string, userName: string) {
     const baseUrl = 'https://khlasify.myr.id/pl/content-pro/';
     const params = new URLSearchParams({ email: userEmail, name: userName || userEmail.split('@')[0] });
-    return { paymentLink: `${baseUrl}?${params.toString()}` };
+    return ResponseHelper.success(
+      { paymentLink: `${baseUrl}?${params.toString()}` },
+      'Payment link generated successfully',
+    );
   }
 
   async checkAndSyncStatus(userId: string | undefined, userEmail: string) {
@@ -30,16 +34,28 @@ export class PaymentService {
     if (!targetUserId) {
       try {
         const user = await this.userRepo.findOne({ where: { email: userEmail } });
-        if (!user) return { isPro: false, status: 'user_not_found_in_db' };
+        if (!user) {
+          return ResponseHelper.notFound(
+            'User not found in database',
+            'USER_NOT_FOUND',
+          );
+        }
         targetUserId = user.id;
       } catch (err) {
-        return { isPro: false, status: 'db_error' };
+        return ResponseHelper.internalError(
+          'Database error while looking up user',
+        );
       }
     }
 
     try {
       const profile = await this.profileRepo.findOne({ where: { userId: targetUserId }, select: ['isPro', 'id'] });
-      if (profile?.isPro) return { isPro: true, status: 'already_pro' };
+      if (profile?.isPro) {
+        return ResponseHelper.success(
+          { isPro: true, syncStatus: 'alreadyPro' },
+          'User is already a PRO member',
+        );
+      }
     } catch (error) {
       this.logger.warn(`[SyncStatus] Local DB Check Warning`);
     }
@@ -58,13 +74,22 @@ export class PaymentService {
           });
           await this.profileRepo.save(profile);
         }
-        return { isPro: true, status: 'synced_now' };
+        return ResponseHelper.success(
+          { isPro: true, syncStatus: 'syncedNow' },
+          'PRO status synced successfully',
+        );
       } catch (error) {
-        return { isPro: true, status: 'synced_but_update_failed' };
+        return ResponseHelper.success(
+          { isPro: true, syncStatus: 'syncedButUpdateFailed' },
+          'PRO status confirmed but local update failed',
+        );
       }
     }
 
-    return { isPro: false, status: 'waiting_payment' };
+    return ResponseHelper.success(
+      { isPro: false, syncStatus: 'waitingPayment' },
+      'No completed payment found. Awaiting payment.',
+    );
   }
 
   private async checkNotionTransaction(email: string): Promise<boolean> {
@@ -104,12 +129,12 @@ export class PaymentService {
         const user = await this.userRepo.findOne({ where: { email: userEmail } });
         if (user) {
           await this.profileRepo.update({ userId: user.id }, { isPro: true });
-          return { isPro: true, message: 'Status synced: PRO Active' };
+          return { isPro: true, syncMessage: 'Status synced: PRO Active' };
         } else {
-          return { isPro: false, message: 'User not found in App' };
+          return { isPro: false, syncMessage: 'User not found in App' };
         }
       }
-      return { isPro: false, message: 'No successful transaction found' };
+      return { isPro: false, syncMessage: 'No successful transaction found' };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to sync: ${errorMessage}`);

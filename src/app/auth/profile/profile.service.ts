@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { CreateProfileDto } from './dto/create-profile.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { Profile } from '../../../database/entities/profile.entity';
-import { ResponseHelper } from 'src/helper/base.response';
+import { ResponseHelper } from '../../../helper/base.response';
 
 @Injectable()
 export class ProfileService {
@@ -21,13 +21,15 @@ export class ProfileService {
       bio: dto.bio,
       userId: dto.userId,
     });
-    return this.profileRepo.save(profile);
+    const savedProfile = await this.profileRepo.save(profile);
+    return ResponseHelper.created(savedProfile, 'Profile created successfully');
   }
 
   async findAll() {
-    return this.profileRepo.find({
+    const profiles = await this.profileRepo.find({
       relations: ['user'],
     });
+    return ResponseHelper.collection(profiles, 'Profiles retrieved successfully');
   }
 
   async findOne(id: string) {
@@ -36,26 +38,35 @@ export class ProfileService {
     });
 
     if (!profile) throw new NotFoundException('Profile not found');
-    return profile;
+    return ResponseHelper.success(profile, 'Profile retrieved successfully');
   }
 
   async update(id: string, dto: UpdateProfileDto) {
-    await this.findOne(id); // validasi exist
+    const existing = await this.profileRepo.findOne({ where: { id } });
+    if (!existing) throw new NotFoundException('Profile not found');
 
     await this.profileRepo.update({ id }, dto);
-    return this.profileRepo.findOne({ where: { id } });
+    const updated = await this.profileRepo.findOne({ where: { id } });
+    return ResponseHelper.success(updated, 'Profile updated successfully');
   }
 
   // Logika baru untuk mengupdate status isPro di database
   async updateProStatus(id: string, status: boolean) {
-    await this.findOne(id); // Memastikan profil ditemukan sebelum update
+    const existing = await this.profileRepo.findOne({ where: { id } });
+    if (!existing) throw new NotFoundException('Profile not found');
 
     await this.profileRepo.update({ id }, { isPro: status });
-    return this.profileRepo.findOne({ where: { id } });
+    const updated = await this.profileRepo.findOne({ where: { id } });
+    return ResponseHelper.success(
+      updated,
+      `PRO status ${status ? 'activated' : 'deactivated'} successfully`,
+    );
   }
 
   async remove(id: string) {
-    const profile = await this.findOne(id);
-    return this.profileRepo.remove(profile);
+    const profile = await this.profileRepo.findOne({ where: { id } });
+    if (!profile) throw new NotFoundException('Profile not found');
+    await this.profileRepo.remove(profile);
+    return ResponseHelper.noContent('Profile deleted successfully');
   }
 }

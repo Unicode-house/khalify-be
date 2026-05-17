@@ -33,7 +33,7 @@ interface QueryDbPinnedParams {
 }
 
 @Injectable()
-export class WidgetService extends ResponseHelper {
+export class WidgetService {
   constructor(
     @InjectRepository(Widget)
     private readonly widgetRepo: Repository<Widget>,
@@ -43,9 +43,7 @@ export class WidgetService extends ResponseHelper {
     private readonly profileRepo: Repository<Profile>,
     private readonly http: HttpService,
     private readonly js: JwtService,
-  ) {
-    super();
-  }
+  ) {}
 
   // GET ALL
   async getAll() {
@@ -53,7 +51,7 @@ export class WidgetService extends ResponseHelper {
       order: { create_at: 'DESC' },
     });
 
-    return ResponseHelper.success(data, 'Widgets retrieved successfully');
+    return ResponseHelper.collection(data, 'Widgets retrieved successfully');
   }
 
   async getNotionDatabases(token: string) {
@@ -93,15 +91,15 @@ export class WidgetService extends ResponseHelper {
         id: db.id,
         name: db.title?.[0]?.plain_text || 'Untitled',
         url: db.url,
-        last_edited_time: db.last_edited_time,
+        lastEditedTime: db.last_edited_time,
         icon: db.icon || null,
         // Jika ID dari Notion ada di dalam Set database lokal, jadikan true
         isAlreadyWidget: registeredDbIds.has(db.id),
       }));
 
-      return ResponseHelper.success(
+      return ResponseHelper.collection(
         databases,
-        'Notion Databases retrieved successfully',
+        'Notion databases retrieved successfully',
       );
     } catch (error: any) {
       // Pertahankan error handling yang sudah kita buat sebelumnya
@@ -166,7 +164,8 @@ export class WidgetService extends ResponseHelper {
         body,
         { headers },
       );
-      return data;
+
+      return ResponseHelper.success(data, 'Pinned pages retrieved successfully');
     }
 
     // pinned=false => unpinned only
@@ -188,7 +187,8 @@ export class WidgetService extends ResponseHelper {
         body,
         { headers },
       );
-      return data;
+
+      return ResponseHelper.success(data, 'Unpinned pages retrieved successfully');
     }
 
     // pinned param absent => default: pinned max 3 diprioritaskan, lalu unpinned sisanya
@@ -237,14 +237,17 @@ export class WidgetService extends ResponseHelper {
       unpinnedData = unpinnedResp.data;
     }
 
-    return {
-      object: 'list',
-      pinned_default: true,
-      pinned_limit: pinnedLimit,
-      results: [...pinnedResults, ...(unpinnedData?.results ?? [])],
-      next_cursor: unpinnedData?.next_cursor ?? null,
-      has_more: Boolean(unpinnedData?.has_more),
-    };
+    return ResponseHelper.success(
+      {
+        object: 'list',
+        pinnedDefault: true,
+        pinnedLimit: pinnedLimit,
+        results: [...pinnedResults, ...(unpinnedData?.results ?? [])],
+        nextCursor: unpinnedData?.next_cursor ?? null,
+        hasMore: Boolean(unpinnedData?.has_more),
+      },
+      'Pages retrieved successfully',
+    );
   }
 
   async getDetail(id: string) {
@@ -254,6 +257,7 @@ export class WidgetService extends ResponseHelper {
           'ID tidak boleh kosong',
           400,
           'BAD_REQUEST',
+          { details: 'Widget ID is required to retrieve detail.' },
         );
       }
 
@@ -263,7 +267,7 @@ export class WidgetService extends ResponseHelper {
       });
 
       if (!widget) {
-        return ResponseHelper.error('Widget tidak ditemukan', 404, 'NOT_FOUND');
+        return ResponseHelper.notFound('Widget tidak ditemukan', 'WIDGET_NOT_FOUND');
       }
 
       // UPDATE: Masukkan field branding ke dalam mapping responseData
@@ -273,11 +277,11 @@ export class WidgetService extends ResponseHelper {
         link: widget.link ?? '',
         name: widget.name ?? 'Unnamed Widget',
         dbID: widget.dbID,
-        create_at: widget.create_at,
+        createdAt: widget.create_at,
         profileId: widget.profileId,
         isPro: widget.profile?.isPro ?? false,
 
-        // --- FIELD BARU DISINI ---
+        // --- FIELD BRANDING ---
         customName: widget.customName,
         customAvatar: widget.customAvatar,
         customUsername: widget.customUsername,
@@ -286,7 +290,7 @@ export class WidgetService extends ResponseHelper {
       };
 
       return ResponseHelper.success(
-        [responseData],
+        responseData,
         'Widget retrieved successfully',
       );
     } catch (error: any) {
@@ -296,10 +300,8 @@ export class WidgetService extends ResponseHelper {
         id_requested: id,
       });
 
-      return ResponseHelper.error(
+      return ResponseHelper.internalError(
         'Terjadi kesalahan internal pada server',
-        500,
-        error.code ?? 'INTERNAL_SERVER_ERROR',
       );
     }
   }
@@ -318,7 +320,8 @@ export class WidgetService extends ResponseHelper {
       { customAvatar: imageUrl },
     );
 
-    return await this.widgetRepo.findOne({ where: { dbID: dbID } });
+    const updated = await this.widgetRepo.findOne({ where: { dbID: dbID } });
+    return ResponseHelper.success(updated, 'Widget avatar updated successfully');
   }
   async getWidgetByEmail(token: string) {
     const payload = this.js.decode(token);
@@ -347,7 +350,7 @@ export class WidgetService extends ResponseHelper {
       throw new NotFoundException('Widgets not found');
     }
 
-    return ResponseHelper.success(widgets, 'Widgets retrieved successfully');
+    return ResponseHelper.collection(widgets, 'Widgets retrieved successfully');
   }
 
   async getEmbedData(dbID: string) {
@@ -361,7 +364,7 @@ export class WidgetService extends ResponseHelper {
 
       if (!widget) {
         console.warn(`[GET_EMBED] Widget dengan dbID ${dbID} tidak ditemukan.`);
-        return ResponseHelper.error('Widget not found', 404, 'NOT_FOUND');
+        return ResponseHelper.notFound('Widget not found', 'WIDGET_NOT_FOUND');
       }
 
       const isProUser = widget.profile?.isPro ?? false;
@@ -398,10 +401,8 @@ export class WidgetService extends ResponseHelper {
       );
     } catch (error) {
       console.error('[GET_EMBED] Error:', error);
-      return ResponseHelper.error(
-        'Internal Server Error',
-        500,
-        'INTERNAL_SERVER_ERROR',
+      return ResponseHelper.internalError(
+        'An unexpected error occurred while retrieving embed data.',
       );
     }
   }
@@ -464,7 +465,7 @@ export class WidgetService extends ResponseHelper {
     const data = await this.widgetRepo.save(newWidget);
 
     // 6. LANGSUNG RETURN SUKSES (TIDAK PERLU AXIOS LAGI!)
-    return ResponseHelper.success(
+    return ResponseHelper.created(
       {
         user,
         profile,
@@ -472,7 +473,6 @@ export class WidgetService extends ResponseHelper {
         embedLink: embedLink,
       },
       'Widget created successfully',
-      201, // HTTP 201 Created
     );
   }
 
@@ -514,7 +514,7 @@ export class WidgetService extends ResponseHelper {
 
     const updatedWidget = await this.widgetRepo.findOne({ where: { id: widgetId } });
 
-    return ResponseHelper.success(updatedWidget, 'Widget branding updated!');
+    return ResponseHelper.success(updatedWidget, 'Widget branding updated successfully');
   }
   async removeWidgetAvatar(widgetId: string, profileId: string) {
     // 1. Ambil data SECUKUPNYA saja
@@ -529,8 +529,7 @@ export class WidgetService extends ResponseHelper {
 
     // 2. CEK RESOURCE: Jika sudah kosong, JANGAN lakukan operasi UPDATE ke database
     if (!widget.customAvatar) {
-      return ResponseHelper.success(
-        null,
+      return ResponseHelper.noContent(
         'Avatar memang sudah kosong, tidak ada resource database yang terpakai.',
       );
     }
@@ -541,7 +540,7 @@ export class WidgetService extends ResponseHelper {
       { customAvatar: null },
     );
 
-    return ResponseHelper.success(null, 'Avatar berhasil dihapus');
+    return ResponseHelper.noContent('Avatar berhasil dihapus');
   }
   async createBulk(dto: CreateWidgetBulkDto) {
     const decode = await this.js.decode(dto.email);
@@ -599,7 +598,7 @@ export class WidgetService extends ResponseHelper {
       },
     });
 
-    return ResponseHelper.success(
+    return ResponseHelper.created(
       {
         user,
         profile,
@@ -612,7 +611,6 @@ export class WidgetService extends ResponseHelper {
         }),
       },
       'Widgets created successfully',
-      201,
     );
   }
 
@@ -623,10 +621,9 @@ export class WidgetService extends ResponseHelper {
     });
 
     if (!exists) {
-      return ResponseHelper.error(
+      return ResponseHelper.notFound(
         'Widget not found',
-        404,
-        'RESOURCE_NOT_FOUND',
+        'WIDGET_NOT_FOUND',
       );
     }
 
@@ -643,10 +640,9 @@ export class WidgetService extends ResponseHelper {
     });
 
     if (!exists) {
-      return ResponseHelper.error(
+      return ResponseHelper.notFound(
         'Widget not found',
-        404,
-        'RESOURCE_NOT_FOUND',
+        'WIDGET_NOT_FOUND',
       );
     }
 

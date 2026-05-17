@@ -9,7 +9,7 @@ import {
 } from 'typeorm';
 import { User } from './user.entity';
 
-@Entity('payments')
+@Entity('Payment')
 export class Payment {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -26,7 +26,7 @@ export class Payment {
   @Column({ nullable: true, name: 'mayar_id' })
   mayarId: string;
 
-  @Column({ name: 'user_id' })
+  @Column({ type: 'char', length: 36, name: 'user_id' })
   userId: string;
 
   @CreateDateColumn({ name: 'created_at' })

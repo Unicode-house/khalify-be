@@ -1,14 +1,16 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import * as Midtrans from 'midtrans-client';
 import * as crypto from 'crypto';
 import { Order, PaymentStatus, PaymentProvider } from '../../database/entities/order.entity';
+import { ResponseHelper } from '../../helper/base.response';
 
 @Injectable()
 export class MidtransService {
   private snap: Midtrans.Snap;
+  private readonly logger = new Logger(MidtransService.name);
 
   constructor(
     private readonly configService: ConfigService,
@@ -57,13 +59,16 @@ export class MidtransService {
 
       const savedOrder = await this.orderRepo.save(order);
 
-      return {
-        snapToken: transaction.token,
-        redirectUrl: transaction.redirect_url,
-        order: savedOrder,
-      };
+      return ResponseHelper.created(
+        {
+          snapToken: transaction.token,
+          redirectUrl: transaction.redirect_url,
+          order: savedOrder,
+        },
+        'Midtrans transaction created successfully',
+      );
     } catch (error) {
-      console.error('Midtrans Error:', error?.ApiResponse || error?.message);
+      this.logger.error('Midtrans Error:', error?.ApiResponse || error?.message);
       throw new InternalServerErrorException(
         'Failed to create Midtrans transaction',
       );
@@ -74,9 +79,8 @@ export class MidtransService {
    * HANDLE MIDTRANS NOTIFICATION (WEBHOOK)
    */
   async handleNotification(notification: any) {
-    console.log(
-      '📩 Midtrans Notification:',
-      JSON.stringify(notification, null, 2),
+    this.logger.log(
+      `📩 Midtrans Notification: ${JSON.stringify(notification, null, 2)}`,
     );
 
     const serverKey = this.configService.get<string>('MIDTRANS_SERVER_KEY');
@@ -93,8 +97,13 @@ export class MidtransService {
       .digest('hex');
 
     if (expectedSignature !== notification.signature_key) {
-      console.error('❌ Invalid Midtrans signature');
-      return { valid: false };
+      this.logger.error('❌ Invalid Midtrans signature');
+      return ResponseHelper.error(
+        'Invalid notification signature',
+        400,
+        'INVALID_SIGNATURE',
+        { details: 'The webhook signature validation failed.' },
+      );
     }
 
     // Update order
@@ -103,8 +112,11 @@ export class MidtransService {
     });
 
     if (!order) {
-      console.error('❌ Order not found:', notification.order_id);
-      return { valid: false };
+      this.logger.error('❌ Order not found:', notification.order_id);
+      return ResponseHelper.notFound(
+        'Order not found',
+        'ORDER_NOT_FOUND',
+      );
     }
 
     let status: PaymentStatus = PaymentStatus.PENDING;
@@ -140,8 +152,15 @@ export class MidtransService {
       },
     );
 
-    console.log(`✅ Order ${order.orderId} updated to ${status}`);
+    this.logger.log(`✅ Order ${order.orderId} updated to ${status}`);
 
-    return { valid: true };
+    return ResponseHelper.success(
+      {
+        valid: true,
+        orderId: order.orderId,
+        transactionStatus: status,
+      },
+      'Notification processed successfully',
+    );
   }
 }

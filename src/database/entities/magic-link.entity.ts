@@ -5,7 +5,7 @@ import {
   CreateDateColumn,
 } from 'typeorm';
 
-@Entity('magic_links')
+@Entity('MagicLink')
 export class MagicLink {
   @PrimaryGeneratedColumn('uuid')
   id: string;
