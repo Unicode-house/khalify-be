@@ -10,12 +10,12 @@ import { Order } from './entities/order.entity';
 
 export default new DataSource({
   type: 'mysql',
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT) || 3306,
-  username: process.env.DB_USERNAME || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_DATABASE || 'khalify',
-  entities: [User, Payment, MagicLink, HighLight, Profile, Widget, Order],
+        host: "202.10.43.18",
+        port: 3306,
+        username: "delr7482_khlasify",
+        password: "khlasify2026db",
+        database: "delr7482_khlasify",
+        entities: [__dirname + '/**/*.entity{.ts,.js}'],
   migrations: ['src/database/migrations/*.ts'],
   synchronize: false,
   charset: 'utf8mb4',

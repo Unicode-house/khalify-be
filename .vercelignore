@@ -1,0 +1,17 @@
+# Vercel ignore file
+# This overrides .gitignore for Vercel deployments
+# IMPORTANT: dist/ is NOT listed here so it gets uploaded
+
+node_modules
+.git
+src
+test
+prisma
+*.spec.ts
+.env
+.env.*
+coverage
+.idea
+.vscode
+.tmp
+.temp

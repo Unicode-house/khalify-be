@@ -1,16 +1,28 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { ExpressAdapter } from '@nestjs/platform-express';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ValidationPipe } from '@nestjs/common';
 import { GlobalExceptionFilter } from './filter/global-exception.filter';
 import { GlobalResponseInterceptor } from './interceptor/global-response.interceptor';
+import * as express from 'express';
 
-async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+// ───────────────────────────────────────────────────────────────────────
+// EXPRESS INSTANCE (shared between local & Vercel)
+// ───────────────────────────────────────────────────────────────────────
+const server = express();
 
-  // ───────────────────────────────────────────────────────────────────────
-  // GLOBAL PIPES — Validation with class-validator + class-transformer
-  // ───────────────────────────────────────────────────────────────────────
+// ───────────────────────────────────────────────────────────────────────
+// NEST APP FACTORY — cached to avoid re-initialization on warm starts
+// ───────────────────────────────────────────────────────────────────────
+let cachedApp: any;
+
+async function createNestServer() {
+  if (cachedApp) return cachedApp;
+
+  const app = await NestFactory.create(AppModule, new ExpressAdapter(server));
+
+  // ─── GLOBAL PIPES ──────────────────────────────────────────────────
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -20,19 +32,13 @@ async function bootstrap() {
     }),
   );
 
-  // ───────────────────────────────────────────────────────────────────────
-  // GLOBAL FILTERS — Enterprise exception handling (JSON-API spec)
-  // ───────────────────────────────────────────────────────────────────────
+  // ─── GLOBAL FILTERS ────────────────────────────────────────────────
   app.useGlobalFilters(new GlobalExceptionFilter());
 
-  // ───────────────────────────────────────────────────────────────────────
-  // GLOBAL INTERCEPTORS — Enterprise response envelope wrapping
-  // ───────────────────────────────────────────────────────────────────────
+  // ─── GLOBAL INTERCEPTORS ───────────────────────────────────────────
   app.useGlobalInterceptors(new GlobalResponseInterceptor());
 
-  // ───────────────────────────────────────────────────────────────────────
-  // SWAGGER / OpenAPI DOCUMENTATION
-  // ───────────────────────────────────────────────────────────────────────
+  // ─── SWAGGER / OpenAPI ─────────────────────────────────────────────
   const config = new DocumentBuilder()
     .setTitle('Khalify API')
     .setDescription(
@@ -83,7 +89,7 @@ Authorization: Bearer <your_jwt_token>
     .setContact('Khalify Team', 'https://khlasify.com', 'support@khlasify.com')
     .setLicense('UNLICENSED', '')
     .addServer('http://localhost:4545', '🖥️ Local Development')
-    .addServer('https://api.khlasify.com', '🌐 Production')
+    .addServer('https://khlasify-be.vercel.app', '🌐 Production (Vercel)')
     .addBearerAuth(
       {
         type: 'http',
@@ -123,15 +129,13 @@ Authorization: Bearer <your_jwt_token>
     },
   });
 
-  // ───────────────────────────────────────────────────────────────────────
-  // CORS CONFIGURATION
-  // ───────────────────────────────────────────────────────────────────────
+  // ─── CORS ──────────────────────────────────────────────────────────
   const allowedOrigins = [
     'https://khalify-notion-widgets.vercel.app',
     'https://khlasify-notion-widget.vercel.app',
     'https://widget.khlasify.com',
     'http://localhost:3000',
-  ];  
+  ];
 
   app.enableCors({
     origin: (origin, callback) => {
@@ -145,6 +149,26 @@ Authorization: Bearer <your_jwt_token>
     exposedHeaders: ['X-Request-Id'],
   });
 
-  await app.listen(process.env.PORT ?? 4545);
+  await app.init();
+  cachedApp = app;
+  return cachedApp;
 }
-bootstrap();
+
+// ═══════════════════════════════════════════════════════════════════════
+// VERCEL SERVERLESS HANDLER (exported for @vercel/node)
+// ═══════════════════════════════════════════════════════════════════════
+export default async function handler(req: any, res: any) {
+  await createNestServer();
+  server(req, res);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// LOCAL DEVELOPMENT (only runs when NOT on Vercel)
+// ═══════════════════════════════════════════════════════════════════════
+if (!process.env.VERCEL) {
+  createNestServer().then(async (app) => {
+    await app.listen(process.env.PORT ?? 4545);
+    console.log(`🚀 Khalify API running on http://localhost:${process.env.PORT ?? 4545}`);
+    console.log(`📚 Swagger docs: http://localhost:${process.env.PORT ?? 4545}/api/docs`);
+  });
+}
